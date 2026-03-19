@@ -1,10 +1,10 @@
 # Ubuntu Desktop for POCO F1 (Beryllium)
 
 
-#### AI GENERATED TO SAVE TIME, HUMAN-WRITTEN README ALSO ATTACHED####
-#### My REPO i used to store all my progress is located here:https://github.com/PastorCatto/Ubuntu-PocoF1-Archive  ####
-#### My organization is a mess (IM SORRY!) so hence the fresh repo once i got system booting!####
-#### Check Engineering-Report.md for a more advanced breakdown of how we got here and what actually happens####
+#### AI GENERATED TO SAVE TIME, HUMAN-WRITTEN README ALSO ATTACHED ####
+#### My REPO i used to store all my progress is located here: https://github.com/PastorCatto/Ubuntu-PocoF1-Archive  ####
+#### My organization is a mess (IM SORRY!) so hence the fresh repo once i got system booting! ####
+#### Check Engineering-Report.md for a more advanced breakdown of how we got here and what actually happens ####
 
 
 Welcome! This project provides a fully automated, paste-and-go script suite to build and install a custom Ubuntu Desktop OS (Lomiri, XFCE, or GNOME) directly onto your POCO F1.
