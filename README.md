@@ -39,7 +39,7 @@ This project provides a modular, automated build suite to deploy a full Ubuntu D
   * Install WSL or a native Ubuntu 24.04 environment.
   * **Firmware Harvest (Optional but Recommended):**
     1.  Flash [Mobian Weekly](https://images.mobian.org/qcom/weekly/) to your device.
-    2.  Connect to Wi-Fi and run: `sudo apt update && sudo apt install openssh-server`
+    2.  Connect to Wi-Fi and run: `sudo apt update && sudo apt install openssh-server && sudo systemctl enable ssh`
     3.  Note your device IP. The default password is `1234`.
   * Copy the **AIO Deployment Script** from this repository and paste it into your host terminal to generate the workspace.
 
