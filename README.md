@@ -50,12 +50,13 @@ This project provides a modular, automated build suite to deploy a full Ubuntu D
 
 #### Step 3: Script Execution Flow
 
-Run these scripts in order. Do not skip steps unless you are performing a targeted update.
+Do not skip steps unless you are performing a targeted update.
+Run 1,2,3,4,6 (5 and 7 are debugging scripts for devs)
 
 1.  **deploy\_workspace.sh**: Run once to generate the build environment.
 2.  **1\_preflight.sh**: Sets up host dependencies and build.env.
 3.  **2\_pmos\_setup.sh**: Compiles the kernel and clones hardware UUIDs.
-4.  **3\_firmware\_fetcher.sh**: (Optional) Harvests blobs from your live Mobian device via SSH.
+4.  **3\_firmware\_fetcher.sh**: Harvests blobs from your live Mobian device via SSH.
 5.  **4\_the\_transplant.sh**: Builds the Ubuntu RootFS and installs the selected UI.
 6.  **8\_lomiri\_hotfix.sh**: (Lomiri Only) Fixes DBus and LightDM configurations.
 7.  **6\_seal\_rootfs.sh**: Finalizes the build and packs the images.
