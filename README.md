@@ -1,114 +1,101 @@
+
 # Ubuntu Desktop for POCO F1 (Beryllium)
 
-A fully automated, "paste-and-go" script suite to build and install a custom 
-Ubuntu Desktop (Lomiri, XFCE, or GNOME) directly onto your POCO F1.
+This project provides a modular, automated build suite to deploy a full Ubuntu Desktop environment (Lomiri, XFCE, or GNOME) onto the POCO F1. By leveraging a partition-hijack method, we run a mainline Linux kernel on the Snapdragon 845 without requiring complex re-partitioning of the internal UFS storage.
 
----
+-----
 
-[ RESOURCES ]
-* Progress Archive: https://github.com/PastorCatto/Ubuntu-PocoF1-Archive
-* Technical Details: See Engineering-Report.md for a deep dive into the 
-  partition hijack and hardware logic.
+### Project Status and Links
 
----
+  * **Development Archive:** [PastorCatto/Ubuntu-PocoF1-Archive](https://github.com/PastorCatto/Ubuntu-PocoF1-Archive)
+  * **Technical Deep Dive:** [Engineering-Report.md](https://www.google.com/search?q=./Engineering-Report.md) (Advanced breakdown of the hijack logic and UUID cloning)
 
-[ PHILOSOPHY, AI, AND CREDITS ]
+-----
 
-* Transparency: The goal is for YOU to know exactly what is on your device. 
-  Because you build this from scratch on your own machine, you can see the 
-  logs and verify the process.
-* The Code: These scripts were AI-generated using Gemini Pro (Feb-Mar 2026). 
-  I will NOT use AI for executables or anything beyond human-readable bash 
-  scripts to ensure there are no hidden exploits or backdoors. If this 
-  project scales, I will move to a human-first development model.
-* The Engine: pmbootstrap is used to generate the kernel and boot images. 
-  Massive shoutout to the postmarketOS team for their debugging tools!
-* The Blobs: Firmware blobs are sourced from Qualcomm and Debian.
-* License: GPL 2.0 (same as the Linux Kernel).
+### Philosophy and AI Transparency
 
----
+1.  **AI Implementation:** The bash scripts in this suite were generated using Gemini Pro (Feb-Mar 2026). This was done strictly for rapid automation.
+2.  **Human-First Security:** I will not use AI to generate executables, binaries, or obfuscated code. Everything here remains human-readable bash to ensure no backdoors, exploits, or RATS are introduced. If the project scales, development will shift to a human-led polish phase.
+3.  **Credits:** Kernel and boot image generation is powered by **pmbootstrap**. Firmware blobs are sourced from **Qualcomm** and **Debian**.
+4.  **License:** This project is licensed under **GPL 2.0**. Upstream components fall under their respective licenses.
 
-[ SYSTEM REQUIREMENTS ]
+-----
 
-* Host OS: Ubuntu 24.04.1 LTS (WSL or native).
-* Storage: 50GB+ (Building 6 large images requires significant overhead).
-* Firmware: You MUST have Mobian installed on your device to harvest blobs 
-  via SSH, OR download the pre-provided firmware archive from this repo.
+### System Requirements
 
----
+| Requirement | Specification |
+| :--- | :--- |
+| **Host OS** | Ubuntu 24.04.1 LTS (Native or WSL) |
+| **Disk Space** | 50GB minimum (Building multiple 8GB+ images) |
+| **Target Device** | POCO F1 (Beryllium) |
+| **Firmware Source** | Mobian Weekly SDM845 (For SSH harvest) or local blobs |
 
-[ INSTALLATION GUIDE ]
+-----
 
-STEP 1: Preparation
-1. Install WSL or an Ubuntu 24.04+ container.
-2. Prepare Firmware:
-   * Option A: Use provided firmware files.
-   * Option B: Flash Mobian Weekly SDM845 to your device. Enable SSH:
-     'sudo apt update && sudo apt install openssh-server'
-     (Mobian default password: 1234)
-3. Copy the AIO script from this repo and paste it into your terminal.
+### Installation Guide
 
-STEP 2: Build Process and Quirks
-The script will auto-run. Follow prompts until Script 2. Note these quirks:
-* THE BLANK SCREEN BUG: For kernels 6.14+, the display often fails to initialize.
-  When pmbootstrap asks for a channel, type: v25.06
-  (This uses a stable kernel that fixes the display initialization).
-* DUMMY PASSWORD: pmbootstrap will ask for a user password during 'install'. 
-  Enter anything; it is a ghost requirement we don't actually use.
+#### Step 1: Preparation and Firmware
 
-STEP 3: Script Execution Order
-Run the scripts in this specific sequence to build your OS:
+  * Install WSL or a native Ubuntu 24.04 environment.
+  * **Firmware Harvest (Optional but Recommended):**
+    1.  Flash [Mobian Weekly](https://images.mobian.org/qcom/weekly/) to your device.
+    2.  Connect to Wi-Fi and run: `sudo apt update && sudo apt install openssh-server`
+    3.  Note your device IP. The default password is `1234`.
+  * Copy the **AIO Deployment Script** from this repository and paste it into your host terminal to generate the workspace.
 
-  +-- deploy_workspace.sh (Run once to spawn the suite)
-  |
-  +-- 1_preflight.sh (Host dependencies and config)
-  |
-  +-- 2_pmos_setup.sh (Kernel build and UUID cloning)
-  |
-  +-- 3_firmware_fetcher.sh (Harvest audio/modem blobs via SSH)
-  |
-  +-- 4_the_transplant.sh (Ubuntu RootFS build and UI install)
-  |
-  +-- 8_lomiri_hotfix.sh (Required ONLY if using Lomiri/Ubuntu Touch)
-  |
-  +-- 5_enter_chroot.sh (Optional manual tweaks)
-  |
-  +-- 6_seal_rootfs.sh (Final image packing)
-  |
-  +-- 7_kernel_menuconfig.sh (Optional kernel hacking)
+#### Step 2: Critical Build Quirks
 
-[ GENERATED OUTPUT IMAGES ]
-========================================================================
+  * **The Display Bug:** Kernels post-6.14 currently suffer from a DSI panel initialization failure (Blank Screen). When `pmbootstrap` asks for a channel, you **MUST** select **v25.06**. This utilizes a stable kernel branch that supports the Tianma and EBBG panels correctly.
+  * **The Prompt Loop:** During `pmbootstrap install`, you will be asked for a user password. This is a framework requirement; enter any value, as it is not utilized by the final Ubuntu environment.
 
-pmos_boot.img ---------------------------> Target: Internal /boot
-                                           (Mandatory ABL Trigger)
+#### Step 3: Script Execution Flow
 
-[ Raw Ext4 Images ] -> For MicroSD Card Deployment
-|
-|--- ubuntu_beryllium_boot.img ----------> Target: SD Partition 1
-|
-'--- ubuntu_beryllium_root.img ----------> Target: SD Partition 2
+Run these scripts in order. Do not skip steps unless you are performing a targeted update.
 
+1.  **deploy\_workspace.sh**: Run once to generate the build environment.
+2.  **1\_preflight.sh**: Sets up host dependencies and build.env.
+3.  **2\_pmos\_setup.sh**: Compiles the kernel and clones hardware UUIDs.
+4.  **3\_firmware\_fetcher.sh**: (Optional) Harvests blobs from your live Mobian device via SSH.
+5.  **4\_the\_transplant.sh**: Builds the Ubuntu RootFS and installs the selected UI.
+6.  **8\_lomiri\_hotfix.sh**: (Lomiri Only) Fixes DBus and LightDM configurations.
+7.  **6\_seal\_rootfs.sh**: Finalizes the build and packs the images.
+8.  **5\_enter\_chroot.sh**: (Utility) Enter the build environment for manual edits.
+9.  **7\_kernel\_menuconfig.sh**: (Utility) Modify kernel parameters or deviceinfo.
 
-[ Sparse Images ] -> For Internal Hijack (Fastboot)
-|
-|--- ubuntu_beryllium_boot_sparse.img ---> Target: Internal /system
-|
-'--- ubuntu_beryllium_root_sparse.img ---> Target: Internal /userdata
+-----
 
-========================================================================
+### Deployment and Flashing
 
-[ FLASHING INSTRUCTIONS ]
+The build process generates two types of images. **Sparse images** are for internal flashing via Fastboot. **Raw images** are for MicroSD card deployment.
 
-1. Reboot POCO F1 into Fastboot mode.
-2. Run the following commands:
+#### Image Mapping Table
 
-   fastboot flash boot pmos_boot.img
-   fastboot flash system ubuntu_beryllium_boot_sparse.img
-   fastboot flash userdata ubuntu_beryllium_root_sparse.img
-   fastboot reboot
+| File Name | Type | Target Partition | Deployment Method |
+| :--- | :--- | :--- | :--- |
+| **pmos\_boot.img** | Android Boot | Internal /boot | **Mandatory** (Trigger) |
+| **ubuntu\_boot\_sparse.img** | Sparse Ext4 | Internal /system | Internal Hijack |
+| **ubuntu\_root\_sparse.img** | Sparse Ext4 | Internal /userdata | Internal Hijack |
+| **ubuntu\_boot.img** | Raw Ext4 | SD Partition 1 | MicroSD Boot |
+| **ubuntu\_root.img** | Raw Ext4 | SD Partition 2 | MicroSD Boot |
 
-CRITICAL: After 'fastboot reboot', do NOT touch the power button. The 
-initial boot will take a while. Just wait!
+#### Internal Flashing Instructions
 
-Boom! You now have Ubuntu running on your Beryllium.
+Boot the POCO F1 into Fastboot mode (Power + Volume Down) and execute:
+
+```bash
+fastboot flash boot pmos_boot.img
+fastboot flash system ubuntu_boot_sparse.img
+fastboot flash userdata ubuntu_root_sparse.img
+fastboot reboot
+```
+
+**Important:** After the reboot, do not interrupt the device. The initial boot sequence involves partition expansion and service initialization. It may remain on the boot splash for several minutes. Just be patient\!
+
+-----
+
+### Contribution and Prebuilts
+
+Prebuilt images are planned once the **v25.06** kernel branch is fully stabilized and the "blank screen" bug on newer kernels is resolved. If you wish to contribute to the kernel debugging, please refer to the Engineering Report.
+
+-----
+
