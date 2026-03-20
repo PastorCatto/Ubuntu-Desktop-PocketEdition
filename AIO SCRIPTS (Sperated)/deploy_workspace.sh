@@ -2,7 +2,7 @@
 set -e
 
 echo "======================================================="
-echo "   ROM Cooker - Modular Workspace Generator (v3 - Lomiri Fix)"
+echo "   ROM Cooker - Modular Workspace Generator (v4 - Minimal)"
 echo "======================================================="
 echo ">>> Generating independent scripts..."
 echo ""
@@ -15,7 +15,7 @@ cat << 'EOF_1' > 1_preflight.sh
 #!/bin/bash
 set -e
 echo "======================================================="
-echo "   [1/8] Pre-Flight & Workspace Setup"
+echo "   [1/7] Pre-Flight & Workspace Setup"
 echo "======================================================="
 
 echo ">>> Checking and installing host dependencies..."
@@ -35,22 +35,57 @@ read -s -p "Enter desired password [default: ubuntu]: " PASSWORD
 echo ""
 PASSWORD=${PASSWORD:-ubuntu}
 
-echo "Select Desktop UI:"
-echo "1) Lomiri (Ubuntu Touch experience)"
-echo "2) XFCE (Lightweight, best for performance)"
-echo "3) GNOME (Modern, heavy, tablet-friendly)"
-echo "4) Custom (Provide your own core package names)"
-read -p "Choice [1-4, default 1]: " UI_CHOICE
+echo "Select Desktop/Mobile UI:"
+echo "--- Mobile Shells (Touch-First) ---"
+echo "1) Phosh (Purism GNOME + Squeekboard)"
+echo "2) Plasma Mobile (KDE Mobile + Maliit)"
+echo "--- Desktop Flavors (Tablet/PC) ---"
+echo "3) GNOME Minimal (Standard Ubuntu)"
+echo "4) KDE Plasma Minimal (Kubuntu)"
+echo "5) Ubuntu Unity Minimal (The Classic)"
+echo "6) XFCE Minimal (Lightweight Xubuntu)"
+echo "7) Custom (Provide your own)"
+read -p "Choice [1-7, default 1]: " UI_CHOICE
+UI_CHOICE=${UI_CHOICE:-1}
 
 case $UI_CHOICE in
-    2) UI_PKG="xfce4 xfce4-goodies xorg"; UI_NAME="xfce" ;;
-    3) UI_PKG="ubuntu-desktop-minimal"; UI_NAME="gnome" ;;
+    2) 
+       UI_PKG="plasma-mobile maliit-keyboard"
+       DM_PKG="sddm"
+       UI_NAME="plasma-mobile" 
+       ;;
+    3) 
+       UI_PKG="gnome-session gnome-terminal nautilus onboard"
+       DM_PKG="gdm3"
+       UI_NAME="gnome-minimal" 
+       ;;
     4) 
-       read -p "Enter full core package name(s) (e.g., kde-standard): " CUSTOM_PKG
-       UI_PKG="$CUSTOM_PKG xorg lightdm"
+       UI_PKG="plasma-desktop konsole dolphin onboard"
+       DM_PKG="sddm"
+       UI_NAME="kde-minimal" 
+       ;;
+    5) 
+       UI_PKG="unity-session gnome-terminal nautilus onboard"
+       DM_PKG="lightdm"
+       UI_NAME="unity-minimal" 
+       ;;
+    6) 
+       UI_PKG="xfce4 xfce4-terminal thunar onboard"
+       DM_PKG="lightdm"
+       UI_NAME="xfce-minimal" 
+       ;;
+    7) 
+       read -p "Enter full core package name(s): " CUSTOM_PKG
+       read -p "Enter required Display Manager (gdm3, lightdm, sddm): " CUSTOM_DM
+       UI_PKG="$CUSTOM_PKG"
+       DM_PKG="$CUSTOM_DM"
        UI_NAME="custom"
        ;;
-    *) UI_PKG="lomiri lomiri-greeter lomiri-desktop-session lightdm mir-graphics-drivers-desktop"; UI_NAME="lomiri" ;;
+    *) 
+       UI_PKG="phosh phosh-core phosh-mobile-settings squeekboard"
+       DM_PKG="gdm3"
+       UI_NAME="phosh" 
+       ;;
 esac
 
 echo ""
@@ -71,6 +106,7 @@ cat << EOF_ENV > build.env
 USERNAME="$USERNAME"
 PASSWORD="$PASSWORD"
 UI_PKG="$UI_PKG"
+DM_PKG="$DM_PKG"
 UI_NAME="$UI_NAME"
 EXTRA_PKG="$EXTRA_PKG"
 IMAGE_SIZE="$IMAGE_SIZE"
@@ -92,7 +128,7 @@ set -e
 source build.env
 
 echo "======================================================="
-echo "   [2/8] pmbootstrap Initialization & Dual UUID Cloning"
+echo "   [2/7] pmbootstrap Initialization & Dual UUID Cloning"
 echo "======================================================="
 
 echo ">>> Pulling latest pmbootstrap from upstream Git..."
@@ -113,23 +149,19 @@ fi
 echo "======================================================="
 echo "   ATTENTION: MANUAL CONFIGURATION REQUIRED"
 echo "======================================================="
-echo "You are about to enter the interactive pmbootstrap init phase."
-echo ""
 echo "CRITICAL INSTRUCTIONS:"
-echo "1. Work path: Use the default ($PM_WORK_DIR) or provide your own."
-echo "2. Channel: Choose 'edge'."
-echo "3. Vendor: Choose 'xiaomi'."
-echo "4. Device: Choose 'beryllium'."
-echo "5. Display/Kernel: Choose 'tianma' or 'ebbg' depending on your panel."
-echo "6. User interface: Choose 'none'."
-echo "7. Init system: You MUST choose 'systemd'."
+echo "1. Channel: MUST choose 'v25.06' (Fixes blank screen bug)"
+echo "2. Vendor: xiaomi"
+echo "3. Device: beryllium"
+echo "4. User interface: none"
+echo "5. Init system: systemd"
 echo "======================================================="
 read -p "Press ENTER when you understand and are ready to begin..."
 
 pmbootstrap init
 
 # --- Kernel Cmdline Injection ---
-echo ">>> Injecting rootdelay and verbose boot flags to prevent initramfs race conditions..."
+echo ">>> Injecting rootdelay and verbose boot flags..."
 DEVICEINFO_PATH=$(find "$PM_WORK_DIR/cache_git/pmaports/device" -name "device-xiaomi-beryllium" -type d 2>/dev/null)/deviceinfo
 if [ -f "$DEVICEINFO_PATH" ]; then
     if ! grep -q "rootdelay=5" "$DEVICEINFO_PATH"; then
@@ -168,15 +200,11 @@ if [ -d "$PMOS_CHROOT_PATH/lib/modules" ]; then
     if [ -n "$PMOS_ROOT_UUID" ]; then
         echo "PMOS_ROOT_UUID=\"$PMOS_ROOT_UUID\"" >> build.env
         echo ">>> Successfully cloned expected RootFS UUID:  $PMOS_ROOT_UUID"
-    else
-        echo ">>> [WARNING] Could not read Root UUID from fstab!"
     fi
     
     if [ -n "$PMOS_BOOT_UUID" ]; then
         echo "PMOS_BOOT_UUID=\"$PMOS_BOOT_UUID\"" >> build.env
         echo ">>> Successfully cloned expected BootFS UUID:  $PMOS_BOOT_UUID"
-    else
-        echo ">>> [WARNING] Could not read Boot UUID from fstab!"
     fi
     
     echo ">>> System linked and ABL boot image secured. Proceed to Script 3."
@@ -196,7 +224,7 @@ set -e
 source build.env
 
 echo "======================================================="
-echo "   [3/8] Firmware Fetcher (Mobian Extraction)"
+echo "   [3/7] Firmware Fetcher (Mobian Extraction)"
 echo "======================================================="
 
 if [ -d "$FIRMWARE_STASH" ] && [ "$(ls -A $FIRMWARE_STASH 2>/dev/null)" ]; then
@@ -209,12 +237,13 @@ else
     read -p "Enter Poco F1 IP Address (e.g., 192.168.1.50): " PHONE_IP
     read -p "Enter Mobian username [default: mobian]: " PHONE_USER
     PHONE_USER=${PHONE_USER:-mobian}
-    read -s -p "Enter Mobian password: " PHONE_PASS
+    read -s -p "Enter Mobian password [default: 1234]: " PHONE_PASS
     echo ""
+    PHONE_PASS=${PHONE_PASS:-1234}
     
     echo ">>> [Phone Side] Archiving hardware profiles via SSH..."
     sshpass -p "$PHONE_PASS" ssh -o StrictHostKeyChecking=no "$PHONE_USER@$PHONE_IP" \
-        "echo '$PHONE_PASS' | sudo -S tar -czpf ~/mobian_harvest.tar.gz /usr/share/alsa/ucm2/ /etc/ModemManager/ /lib/udev/rules.d/"
+        "echo '$PHONE_PASS' | sudo -S tar -czpf ~/mobian_harvest.tar.gz /usr/share/alsa/ucm2/ /etc/ModemManager/ /lib/udev/rules.d/ /lib/firmware/postmarketos/" || true
     
     echo ">>> [Host Side] Downloading the archive..."
     mkdir -p "$FIRMWARE_STASH"
@@ -226,14 +255,6 @@ else
     
     echo ">>> [Phone Side] Cleaning up temporary files..."
     sshpass -p "$PHONE_PASS" ssh -o StrictHostKeyChecking=no "$PHONE_USER@$PHONE_IP" "rm ~/mobian_harvest.tar.gz"
-fi
-
-echo ">>> [Host Side] Zipping firmware stash for later upload/distribution..."
-if [ ! -f "$HOME/beryllium_mobian_firmware.zip" ]; then
-    cd "$FIRMWARE_STASH" && zip -r "$HOME/beryllium_mobian_firmware.zip" ./* && cd - > /dev/null
-    echo ">>> Portable zip backup created at $HOME/beryllium_mobian_firmware.zip"
-else
-    echo ">>> Zip backup already exists at $HOME/beryllium_mobian_firmware.zip"
 fi
 
 echo ">>> Firmware successfully stashed and secured."
@@ -250,7 +271,7 @@ set -e
 source build.env
 
 echo "======================================================="
-echo "   [4/8] The Transplant (Base OS Build)"
+echo "   [4/7] The Transplant (Base OS Build)"
 echo "======================================================="
 echo ">>> Target: Beryllium | User: $USERNAME | UI: $UI_NAME"
 echo ">>> Boot Method: Dual-Partition (System Hijack) via ABL"
@@ -292,6 +313,14 @@ if [ -d "$FIRMWARE_STASH/usr/share/alsa/ucm2" ]; then
 fi
 
 if [ "$SKIP_SETUP" == "no" ]; then
+    
+    echo ">>> Safely mounting virtual filesystems for chroot..."
+    for d in dev dev/pts proc sys run; do
+        if ! mountpoint -q "Ubuntu-Beryllium/$d"; then
+            sudo mount --bind "/$d" "Ubuntu-Beryllium/$d"
+        fi
+    done
+
     echo ">>> [Config] Expanding repositories and installing UI..."
     sudo chroot Ubuntu-Beryllium /bin/bash << CHROOT_EOF
 echo "nameserver 8.8.8.8" > /etc/resolv.conf
@@ -308,43 +337,38 @@ if ! id "$USERNAME" &>/dev/null; then
     usermod -aG sudo,video,audio,plugdev $USERNAME
 fi
 
-apt-get update && apt-get upgrade -y
 export DEBIAN_FRONTEND=noninteractive
+apt-get update && apt-get upgrade -y
 
-# Temporarily disable set -e for the UI install so dbus errors don't crash our script
+# Temporarily disable set -e for the UI install so minor warnings don't kill the script
 set +e
-apt-get install -y $UI_PKG $EXTRA_PKG modemmanager network-manager systemd-resolved
-set -e
 
-echo "/usr/sbin/lightdm" > /etc/X11/default-display-manager 2>/dev/null || true
-dpkg-reconfigure lightdm 2>/dev/null || true
+# Pre-seed the debconf database so the display manager installs silently
+echo "$DM_PKG shared/default-x-display-manager select $DM_PKG" | debconf-set-selections
+
+# Install the UI and Display Manager with --no-install-recommends to kill bloat
+apt-get install -y --no-install-recommends $UI_PKG $DM_PKG modemmanager network-manager systemd-resolved
+
+# Hardcode the default display manager to ensure no black screens on boot
+echo "/usr/sbin/$DM_PKG" > /etc/X11/default-display-manager
+dpkg-reconfigure -f noninteractive $DM_PKG 2>/dev/null || true
+
+set -e
 CHROOT_EOF
 
-    echo "======================================================="
-    echo "   LOMIRI / UI INSTALLATION CHECK"
-    echo "======================================================="
-    echo ">>> If you selected Lomiri, check the terminal output above."
-    echo ">>> Did you see any errors like: 'Failed to connect to bus' or 'dpkg: error processing package'?"
-    echo ">>> (This happens because systemd cannot start services inside a chroot)."
-    echo ">>> If you saw these errors, DO NOT seal the image yet. Run Script 8 next!"
-    echo "======================================================="
+    echo ">>> Unmounting virtual filesystems..."
+    for d in run sys proc dev/pts dev; do
+        if mountpoint -q "Ubuntu-Beryllium/$d"; then
+            sudo umount -l "Ubuntu-Beryllium/$d"
+        fi
+    done
 fi
 
-echo ""
-echo "Do you want to seal the RootFS/BootFS into images right now,"
-echo "or continue making manual edits/configurations inside the chroot later?"
-echo "1) Seal it now (I am not using Lomiri / had no errors)"
-echo "2) Leave it unsealed (I need to run the Script 8 Lomiri Hotfix or make edits)"
-read -p "Choice [1-2, default 2]: " CHROOT_CHOICE
-CHROOT_CHOICE=${CHROOT_CHOICE:-2}
-
-if [ "$CHROOT_CHOICE" == "1" ]; then
-    bash 6_seal_rootfs.sh
-else
-    echo ">>> Chroot left open at ./Ubuntu-Beryllium"
-    echo ">>> If you chose Lomiri, run: bash 8_lomiri_hotfix.sh"
-    echo ">>> When you are finished, run: bash 6_seal_rootfs.sh"
-fi
+echo "======================================================="
+echo "   CHROOT BUILD COMPLETE"
+echo "======================================================="
+echo ">>> Run bash 6_seal_rootfs.sh to pack your images,"
+echo ">>> or run bash 5_enter_chroot.sh to make manual tweaks."
 EOF_4
 
 # ==============================================================================
@@ -355,19 +379,25 @@ cat << 'EOF_5' > 5_enter_chroot.sh
 #!/bin/bash
 set -e
 echo "======================================================="
-echo "   [5/8] Enter Chroot Environment"
+echo "   [5/7] Enter Chroot Environment (Hardened)"
 echo "======================================================="
-sudo mount --bind /dev Ubuntu-Beryllium/dev
-sudo mount --bind /dev/pts Ubuntu-Beryllium/dev/pts
-sudo mount --bind /proc Ubuntu-Beryllium/proc
-sudo mount --bind /sys Ubuntu-Beryllium/sys
 
+for d in dev dev/pts proc sys run; do
+    if ! mountpoint -q "Ubuntu-Beryllium/$d"; then
+        sudo mount --bind "/$d" "Ubuntu-Beryllium/$d"
+        echo ">>> Mounted /$d"
+    fi
+done
+
+echo ">>> Entering chroot..."
 sudo chroot Ubuntu-Beryllium /bin/bash
 
-sudo umount Ubuntu-Beryllium/dev/pts || true
-sudo umount Ubuntu-Beryllium/dev || true
-sudo umount Ubuntu-Beryllium/proc || true
-sudo umount Ubuntu-Beryllium/sys || true
+echo ">>> Exited. Unmounting virtual filesystems..."
+for d in run sys proc dev/pts dev; do
+    if mountpoint -q "Ubuntu-Beryllium/$d"; then
+        sudo umount -l "Ubuntu-Beryllium/$d"
+    fi
+done
 EOF_5
 
 # ==============================================================================
@@ -380,15 +410,16 @@ set -e
 source build.env
 
 echo "======================================================="
-echo "   [6/8] Finalizing and Sealing Dual-Partition Images"
+echo "   [6/7] Finalizing and Sealing Dual-Partition Images"
 echo "======================================================="
 ROOT_IMG="ubuntu_beryllium_root.img"
 BOOT_IMG="ubuntu_beryllium_boot.img"
 
-sudo umount Ubuntu-Beryllium/dev/pts 2>/dev/null || true
-sudo umount Ubuntu-Beryllium/dev 2>/dev/null || true
-sudo umount Ubuntu-Beryllium/proc 2>/dev/null || true
-sudo umount Ubuntu-Beryllium/sys 2>/dev/null || true
+for d in run sys proc dev/pts dev; do
+    if mountpoint -q "Ubuntu-Beryllium/$d"; then
+        sudo umount -l "Ubuntu-Beryllium/$d"
+    fi
+done
 
 echo ">>> [Packing] Allocating 256MB BootFS..."
 dd if=/dev/zero of="$BOOT_IMG" bs=1M count=256 status=progress
@@ -436,7 +467,7 @@ cat << 'EOF_7' > 7_kernel_menuconfig.sh
 #!/bin/bash
 set -e
 echo "======================================================="
-echo "   [7/8] Kernel & Device Configuration Hacking"
+echo "   [7/7] Kernel & Device Configuration Hacking"
 echo "======================================================="
 echo "1) Kernel Menuconfig (Modify drivers)"
 echo "2) deviceinfo File (Modify kernel command line)"
@@ -450,75 +481,10 @@ fi
 EOF_7
 
 # ==============================================================================
-#                      START OF SCRIPT 8: LOMIRI HOTFIX
-# ==============================================================================
-
-cat << 'EOF_8' > 8_lomiri_hotfix.sh
-#!/bin/bash
-set -e
-
-echo "======================================================="
-echo "   [8/8] Lomiri UI Hotfix & Greeter Patch"
-echo "======================================================="
-echo ">>> Did your Lomiri install kick back dbus/systemd errors?"
-echo ">>> Look for: 'Failed to connect to bus', 'dpkg: error processing package',"
-echo ">>> or if you booted into an ugly PC-style login box previously."
-echo ">>> This script will surgical-strike the chroot, force-configure dpkg,"
-echo ">>> nuke the PC greeter, and lock LightDM to Ubuntu Touch."
-echo "-------------------------------------------------------"
-read -p "Apply the Lomiri hotfix to the chroot now? (y/n) [default: y]: " APPLY_FIX
-APPLY_FIX=${APPLY_FIX:-y}
-
-if [ "$APPLY_FIX" == "y" ]; then
-    if [ ! -d "Ubuntu-Beryllium" ]; then
-        echo ">>> [ERROR] Ubuntu-Beryllium directory not found."
-        exit 1
-    fi
-    
-    echo ">>> Mounting virtual filesystems..."
-    sudo mount --bind /dev Ubuntu-Beryllium/dev 2>/dev/null || true
-    sudo mount --bind /dev/pts Ubuntu-Beryllium/dev/pts 2>/dev/null || true
-    sudo mount --bind /proc Ubuntu-Beryllium/proc 2>/dev/null || true
-    sudo mount --bind /sys Ubuntu-Beryllium/sys 2>/dev/null || true
-
-    echo ">>> Injecting hotfix into chroot..."
-    sudo chroot Ubuntu-Beryllium /bin/bash << 'CHROOT_EOF'
-export DEBIAN_FRONTEND=noninteractive
-echo ">>> Forcing package configuration..."
-dpkg --configure -a || true
-apt-get update
-apt-get install -y lomiri lomiri-greeter lomiri-desktop-session lightdm
-
-echo ">>> Purging GTK greeter to prevent hybrid boot..."
-apt-get purge -y lightdm-gtk-greeter || true
-apt-get autoremove -y
-
-echo ">>> Hardcoding LightDM configuration for Lomiri..."
-mkdir -p /etc/lightdm/lightdm.conf.d
-cat << 'CONF_EOF' > /etc/lightdm/lightdm.conf.d/99-lomiri.conf
-[Seat:*]
-greeter-session=lomiri-greeter
-user-session=lomiri
-CONF_EOF
-CHROOT_EOF
-
-    echo ">>> Unmounting virtual filesystems..."
-    sudo umount Ubuntu-Beryllium/sys 2>/dev/null || true
-    sudo umount Ubuntu-Beryllium/proc 2>/dev/null || true
-    sudo umount Ubuntu-Beryllium/dev/pts 2>/dev/null || true
-    sudo umount Ubuntu-Beryllium/dev 2>/dev/null || true
-    
-    echo ">>> Lomiri Hotfix successfully applied! You can now run bash 6_seal_rootfs.sh."
-else
-    echo ">>> Skipping Lomiri hotfix."
-fi
-EOF_8
-
-# ==============================================================================
 #                      END OF SCRIPT GENERATION
 # ==============================================================================
 
-chmod +x 1_preflight.sh 2_pmos_setup.sh 3_firmware_fetcher.sh 4_the_transplant.sh 5_enter_chroot.sh 6_seal_rootfs.sh 7_kernel_menuconfig.sh 8_lomiri_hotfix.sh
+chmod +x 1_preflight.sh 2_pmos_setup.sh 3_firmware_fetcher.sh 4_the_transplant.sh 5_enter_chroot.sh 6_seal_rootfs.sh 7_kernel_menuconfig.sh
 
 echo ">>> Workspace scripts generated successfully!"
 echo ">>> Run 'bash 1_preflight.sh' to begin the process."

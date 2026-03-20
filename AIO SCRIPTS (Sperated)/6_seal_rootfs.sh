@@ -3,15 +3,16 @@ set -e
 source build.env
 
 echo "======================================================="
-echo "   [6/8] Finalizing and Sealing Dual-Partition Images"
+echo "   [6/7] Finalizing and Sealing Dual-Partition Images"
 echo "======================================================="
 ROOT_IMG="ubuntu_beryllium_root.img"
 BOOT_IMG="ubuntu_beryllium_boot.img"
 
-sudo umount Ubuntu-Beryllium/dev/pts 2>/dev/null || true
-sudo umount Ubuntu-Beryllium/dev 2>/dev/null || true
-sudo umount Ubuntu-Beryllium/proc 2>/dev/null || true
-sudo umount Ubuntu-Beryllium/sys 2>/dev/null || true
+for d in run sys proc dev/pts dev; do
+    if mountpoint -q "Ubuntu-Beryllium/$d"; then
+        sudo umount -l "Ubuntu-Beryllium/$d"
+    fi
+done
 
 echo ">>> [Packing] Allocating 256MB BootFS..."
 dd if=/dev/zero of="$BOOT_IMG" bs=1M count=256 status=progress

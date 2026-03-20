@@ -1,16 +1,22 @@
 #!/bin/bash
 set -e
 echo "======================================================="
-echo "   [5/8] Enter Chroot Environment"
+echo "   [5/7] Enter Chroot Environment (Hardened)"
 echo "======================================================="
-sudo mount --bind /dev Ubuntu-Beryllium/dev
-sudo mount --bind /dev/pts Ubuntu-Beryllium/dev/pts
-sudo mount --bind /proc Ubuntu-Beryllium/proc
-sudo mount --bind /sys Ubuntu-Beryllium/sys
 
+for d in dev dev/pts proc sys run; do
+    if ! mountpoint -q "Ubuntu-Beryllium/$d"; then
+        sudo mount --bind "/$d" "Ubuntu-Beryllium/$d"
+        echo ">>> Mounted /$d"
+    fi
+done
+
+echo ">>> Entering chroot..."
 sudo chroot Ubuntu-Beryllium /bin/bash
 
-sudo umount Ubuntu-Beryllium/dev/pts || true
-sudo umount Ubuntu-Beryllium/dev || true
-sudo umount Ubuntu-Beryllium/proc || true
-sudo umount Ubuntu-Beryllium/sys || true
+echo ">>> Exited. Unmounting virtual filesystems..."
+for d in run sys proc dev/pts dev; do
+    if mountpoint -q "Ubuntu-Beryllium/$d"; then
+        sudo umount -l "Ubuntu-Beryllium/$d"
+    fi
+done

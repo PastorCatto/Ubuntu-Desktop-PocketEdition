@@ -3,7 +3,7 @@ set -e
 source build.env
 
 echo "======================================================="
-echo "   [2/8] pmbootstrap Initialization & Dual UUID Cloning"
+echo "   [2/7] pmbootstrap Initialization & Dual UUID Cloning"
 echo "======================================================="
 
 echo ">>> Pulling latest pmbootstrap from upstream Git..."
@@ -24,23 +24,19 @@ fi
 echo "======================================================="
 echo "   ATTENTION: MANUAL CONFIGURATION REQUIRED"
 echo "======================================================="
-echo "You are about to enter the interactive pmbootstrap init phase."
-echo ""
 echo "CRITICAL INSTRUCTIONS:"
-echo "1. Work path: Use the default ($PM_WORK_DIR) or provide your own."
-echo "2. Channel: Choose 'edge'."
-echo "3. Vendor: Choose 'xiaomi'."
-echo "4. Device: Choose 'beryllium'."
-echo "5. Display/Kernel: Choose 'tianma' or 'ebbg' depending on your panel."
-echo "6. User interface: Choose 'none'."
-echo "7. Init system: You MUST choose 'systemd'."
+echo "1. Channel: MUST choose 'v25.06' (Fixes blank screen bug)"
+echo "2. Vendor: xiaomi"
+echo "3. Device: beryllium"
+echo "4. User interface: none"
+echo "5. Init system: systemd"
 echo "======================================================="
 read -p "Press ENTER when you understand and are ready to begin..."
 
 pmbootstrap init
 
 # --- Kernel Cmdline Injection ---
-echo ">>> Injecting rootdelay and verbose boot flags to prevent initramfs race conditions..."
+echo ">>> Injecting rootdelay and verbose boot flags..."
 DEVICEINFO_PATH=$(find "$PM_WORK_DIR/cache_git/pmaports/device" -name "device-xiaomi-beryllium" -type d 2>/dev/null)/deviceinfo
 if [ -f "$DEVICEINFO_PATH" ]; then
     if ! grep -q "rootdelay=5" "$DEVICEINFO_PATH"; then
@@ -79,15 +75,11 @@ if [ -d "$PMOS_CHROOT_PATH/lib/modules" ]; then
     if [ -n "$PMOS_ROOT_UUID" ]; then
         echo "PMOS_ROOT_UUID=\"$PMOS_ROOT_UUID\"" >> build.env
         echo ">>> Successfully cloned expected RootFS UUID:  $PMOS_ROOT_UUID"
-    else
-        echo ">>> [WARNING] Could not read Root UUID from fstab!"
     fi
     
     if [ -n "$PMOS_BOOT_UUID" ]; then
         echo "PMOS_BOOT_UUID=\"$PMOS_BOOT_UUID\"" >> build.env
         echo ">>> Successfully cloned expected BootFS UUID:  $PMOS_BOOT_UUID"
-    else
-        echo ">>> [WARNING] Could not read Boot UUID from fstab!"
     fi
     
     echo ">>> System linked and ABL boot image secured. Proceed to Script 3."

@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 echo "======================================================="
-echo "   [1/8] Pre-Flight & Workspace Setup"
+echo "   [1/7] Pre-Flight & Workspace Setup"
 echo "======================================================="
 
 echo ">>> Checking and installing host dependencies..."
@@ -21,22 +21,57 @@ read -s -p "Enter desired password [default: ubuntu]: " PASSWORD
 echo ""
 PASSWORD=${PASSWORD:-ubuntu}
 
-echo "Select Desktop UI:"
-echo "1) Lomiri (Ubuntu Touch experience)"
-echo "2) XFCE (Lightweight, best for performance)"
-echo "3) GNOME (Modern, heavy, tablet-friendly)"
-echo "4) Custom (Provide your own core package names)"
-read -p "Choice [1-4, default 1]: " UI_CHOICE
+echo "Select Desktop/Mobile UI:"
+echo "--- Mobile Shells (Touch-First) ---"
+echo "1) Phosh (Purism GNOME + Squeekboard)"
+echo "2) Plasma Mobile (KDE Mobile + Maliit)"
+echo "--- Desktop Flavors (Tablet/PC) ---"
+echo "3) GNOME Minimal (Standard Ubuntu)"
+echo "4) KDE Plasma Minimal (Kubuntu)"
+echo "5) Ubuntu Unity Minimal (The Classic)"
+echo "6) XFCE Minimal (Lightweight Xubuntu)"
+echo "7) Custom (Provide your own)"
+read -p "Choice [1-7, default 1]: " UI_CHOICE
+UI_CHOICE=${UI_CHOICE:-1}
 
 case $UI_CHOICE in
-    2) UI_PKG="xfce4 xfce4-goodies xorg"; UI_NAME="xfce" ;;
-    3) UI_PKG="ubuntu-desktop-minimal"; UI_NAME="gnome" ;;
+    2) 
+       UI_PKG="plasma-mobile maliit-keyboard"
+       DM_PKG="sddm"
+       UI_NAME="plasma-mobile" 
+       ;;
+    3) 
+       UI_PKG="gnome-session gnome-terminal nautilus onboard"
+       DM_PKG="gdm3"
+       UI_NAME="gnome-minimal" 
+       ;;
     4) 
-       read -p "Enter full core package name(s) (e.g., kde-standard): " CUSTOM_PKG
-       UI_PKG="$CUSTOM_PKG xorg lightdm"
+       UI_PKG="plasma-desktop konsole dolphin onboard"
+       DM_PKG="sddm"
+       UI_NAME="kde-minimal" 
+       ;;
+    5) 
+       UI_PKG="unity-session gnome-terminal nautilus onboard"
+       DM_PKG="lightdm"
+       UI_NAME="unity-minimal" 
+       ;;
+    6) 
+       UI_PKG="xfce4 xfce4-terminal thunar onboard"
+       DM_PKG="lightdm"
+       UI_NAME="xfce-minimal" 
+       ;;
+    7) 
+       read -p "Enter full core package name(s): " CUSTOM_PKG
+       read -p "Enter required Display Manager (gdm3, lightdm, sddm): " CUSTOM_DM
+       UI_PKG="$CUSTOM_PKG"
+       DM_PKG="$CUSTOM_DM"
        UI_NAME="custom"
        ;;
-    *) UI_PKG="lomiri lomiri-greeter lomiri-desktop-session lightdm mir-graphics-drivers-desktop"; UI_NAME="lomiri" ;;
+    *) 
+       UI_PKG="phosh phosh-core phosh-mobile-settings squeekboard"
+       DM_PKG="gdm3"
+       UI_NAME="phosh" 
+       ;;
 esac
 
 echo ""
@@ -57,6 +92,7 @@ cat << EOF_ENV > build.env
 USERNAME="$USERNAME"
 PASSWORD="$PASSWORD"
 UI_PKG="$UI_PKG"
+DM_PKG="$DM_PKG"
 UI_NAME="$UI_NAME"
 EXTRA_PKG="$EXTRA_PKG"
 IMAGE_SIZE="$IMAGE_SIZE"

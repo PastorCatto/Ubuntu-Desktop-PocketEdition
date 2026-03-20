@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 echo "======================================================="
-echo "   [7/8] Kernel & Device Configuration Hacking"
+echo "   [7/7] Kernel & Device Configuration Hacking"
 echo "======================================================="
 echo "1) Kernel Menuconfig (Modify drivers)"
 echo "2) deviceinfo File (Modify kernel command line)"

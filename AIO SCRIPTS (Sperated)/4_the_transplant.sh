@@ -3,7 +3,7 @@ set -e
 source build.env
 
 echo "======================================================="
-echo "   [4/8] The Transplant (Base OS Build)"
+echo "   [4/7] The Transplant (Base OS Build)"
 echo "======================================================="
 echo ">>> Target: Beryllium | User: $USERNAME | UI: $UI_NAME"
 echo ">>> Boot Method: Dual-Partition (System Hijack) via ABL"
@@ -45,6 +45,14 @@ if [ -d "$FIRMWARE_STASH/usr/share/alsa/ucm2" ]; then
 fi
 
 if [ "$SKIP_SETUP" == "no" ]; then
+    
+    echo ">>> Safely mounting virtual filesystems for chroot..."
+    for d in dev dev/pts proc sys run; do
+        if ! mountpoint -q "Ubuntu-Beryllium/$d"; then
+            sudo mount --bind "/$d" "Ubuntu-Beryllium/$d"
+        fi
+    done
+
     echo ">>> [Config] Expanding repositories and installing UI..."
     sudo chroot Ubuntu-Beryllium /bin/bash << CHROOT_EOF
 echo "nameserver 8.8.8.8" > /etc/resolv.conf
@@ -61,40 +69,35 @@ if ! id "$USERNAME" &>/dev/null; then
     usermod -aG sudo,video,audio,plugdev $USERNAME
 fi
 
-apt-get update && apt-get upgrade -y
 export DEBIAN_FRONTEND=noninteractive
+apt-get update && apt-get upgrade -y
 
-# Temporarily disable set -e for the UI install so dbus errors don't crash our script
+# Temporarily disable set -e for the UI install so minor warnings don't kill the script
 set +e
-apt-get install -y $UI_PKG $EXTRA_PKG modemmanager network-manager systemd-resolved
-set -e
 
-echo "/usr/sbin/lightdm" > /etc/X11/default-display-manager 2>/dev/null || true
-dpkg-reconfigure lightdm 2>/dev/null || true
+# Pre-seed the debconf database so the display manager installs silently
+echo "$DM_PKG shared/default-x-display-manager select $DM_PKG" | debconf-set-selections
+
+# Install the UI and Display Manager with --no-install-recommends to kill bloat
+apt-get install -y --no-install-recommends $UI_PKG $DM_PKG modemmanager network-manager systemd-resolved
+
+# Hardcode the default display manager to ensure no black screens on boot
+echo "/usr/sbin/$DM_PKG" > /etc/X11/default-display-manager
+dpkg-reconfigure -f noninteractive $DM_PKG 2>/dev/null || true
+
+set -e
 CHROOT_EOF
 
-    echo "======================================================="
-    echo "   LOMIRI / UI INSTALLATION CHECK"
-    echo "======================================================="
-    echo ">>> If you selected Lomiri, check the terminal output above."
-    echo ">>> Did you see any errors like: 'Failed to connect to bus' or 'dpkg: error processing package'?"
-    echo ">>> (This happens because systemd cannot start services inside a chroot)."
-    echo ">>> If you saw these errors, DO NOT seal the image yet. Run Script 8 next!"
-    echo "======================================================="
+    echo ">>> Unmounting virtual filesystems..."
+    for d in run sys proc dev/pts dev; do
+        if mountpoint -q "Ubuntu-Beryllium/$d"; then
+            sudo umount -l "Ubuntu-Beryllium/$d"
+        fi
+    done
 fi
 
-echo ""
-echo "Do you want to seal the RootFS/BootFS into images right now,"
-echo "or continue making manual edits/configurations inside the chroot later?"
-echo "1) Seal it now (I am not using Lomiri / had no errors)"
-echo "2) Leave it unsealed (I need to run the Script 8 Lomiri Hotfix or make edits)"
-read -p "Choice [1-2, default 2]: " CHROOT_CHOICE
-CHROOT_CHOICE=${CHROOT_CHOICE:-2}
-
-if [ "$CHROOT_CHOICE" == "1" ]; then
-    bash 6_seal_rootfs.sh
-else
-    echo ">>> Chroot left open at ./Ubuntu-Beryllium"
-    echo ">>> If you chose Lomiri, run: bash 8_lomiri_hotfix.sh"
-    echo ">>> When you are finished, run: bash 6_seal_rootfs.sh"
-fi
+echo "======================================================="
+echo "   CHROOT BUILD COMPLETE"
+echo "======================================================="
+echo ">>> Run bash 6_seal_rootfs.sh to pack your images,"
+echo ">>> or run bash 5_enter_chroot.sh to make manual tweaks."
