@@ -86,6 +86,7 @@ WiFi initialization is physically dependent on the Modem (MSS). By stabilizing t
 * **Power Management:** Stabilizing `max17050` fuel-gauge drivers for accurate battery reporting.
 * **GPS & GNSS:** Finalizing `loc-mq` or `gpsd` integration via QRTR link.
 * **Deep Sleep:** Tuning `s2idle` states for extended standby.
+* **WiFi & Rotation:** Getting WiFI up using `pd-mapper` to communicate with the rest of the modules
 
 ### 7.2 Phase 2: The Universal Porting Engine
 The Cooker is being refactored into a device-agnostic architecture. To ensure high-fidelity ports, the suite enforces a **Dual-Source Requirement**: a device must be supported by both **postmarketOS** and **Mobian**.
