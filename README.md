@@ -24,7 +24,7 @@ The build process creates a functional Linux environment by merging three distin
 
 ### Hardware
 * **Target:** Xiaomi Poco F1 (beryllium) with an unlocked bootloader.
-* **Donor:** A secondary Poco F1 running a functional Mobian installation (required for Script 3).
+* **Donor:** A secondary Poco F1 running a functional Mobian installation (required for Script 3). (can also be Target Device with Mobian Installed)
 * **Network:** Both the host and donor must be on the same local network for SSH harvesting.
 
 ---
@@ -60,7 +60,7 @@ Initializes `pmbootstrap`. When prompted, you must select:
 
 The script patches the kernel command line for UFS compatibility and clones the partition UUIDs to ensure the Ubuntu RootFS is mountable by the pmOS initramfs.
 
-### 3. Mandatory Firmware Harvest
+### 3. Mandatory Firmware Harvest (Run: "sudo apt update && sudo apt install openssh-server -y && sudo systemctl enable ssh" On the Donor Device Before running this script!) 
 ```bash
 bash 3_firmware_fetcher.sh
 ```
