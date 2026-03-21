@@ -174,6 +174,7 @@ fi
 
 # --- Generation & Extraction ---
 echo ">>> Triggering pmbootstrap rootfs generation..."
+echo ">>> Enter Any password (Doesnt Apply to our build, only applies to Pmbootstrap)"
 pmbootstrap install
 
 PM_WORK_DIR=$(pmbootstrap config work)
