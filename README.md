@@ -1,117 +1,130 @@
+# Project Beryllium: Ubuntu-pmOS Hybrid Porting Toolkit
+# Document version v2.0a (the Public Port Toolkit Update)
 
-
-
-# UPDATE! WE NOW HAVE A PORTING GUIDE TO PORT TO OTHER DEVICES! IVE MADE A TOOLCHAIN ADAPTER TO CONVERT THESE SCRIPT TO ANY DEVICE BEING PORTED!
-# GOOD LUCK!
-
-
-# Ubuntu Desktop for POCO F1 (Beryllium)
-
-This project provides a modular, automated build suite to deploy a clean, functional Ubuntu Linux OS directly onto the POCO F1 (Snapdragon 845). 
-
-Rather than relying on pre-compiled, opaque system images, this toolset empowers you to build the operating system entirely from scratch on your own machine. It utilizes a "Partition Hijack" method to run a mainline Linux kernel natively on the Android bootloader, without requiring risky re-partitioning of the internal UFS storage.
+This repository contains a modular toolkit for building a custom Ubuntu Noble (24.04) image for the Xiaomi Poco F1 (beryllium). It utilizes a "Hybrid Transplant" methodology, employing postmarketOS (pmOS) as the hardware-enablement foundation and a live Mobian installation for mandatory proprietary firmware and hardware mapping.
 
 ---
 
-### Project Philosophy
-1. **Human-Readable Code:** Everything in this repo is standard, auditable bash to ensure zero backdoors or hidden exploits. 
-2. **Vanilla Stability, Surgical Debloat:** Minimal session packages often lack critical polkit rules and Wayland wrappers, resulting in dead screens. This suite installs the full, stable "vanilla" desktop environments to ensure background services wire correctly, but automatically runs surgical purges (like aggressively stripping out the LibreOffice suite) before sealing the image to save space and RAM.
-3. **Credits & Upstream:** Kernel and boot image generation is powered by the incredible **pmbootstrap** from the postmarketOS team. Firmware blobs are sourced natively from **Mobian/Debian** and **Qualcomm**. All upstream code falls under their respective open-source licenses; this project is licensed under GPL 2.0.
+## Technical Overview
+
+The build process creates a functional Linux environment by merging three distinct layers:
+
+1.  **Hardware Foundation:** Kernel, modules, and Device Tree Blobs (DTB) sourced from the postmarketOS stable branch.
+2.  **Operating System:** A vanilla Ubuntu Noble ARM64 RootFS generated via debootstrap.
+3.  **Hardware Mapping:** Proprietary binary blobs and configuration files (ALSA, ModemManager, udev) harvested from a donor device running Mobian.
 
 ---
 
-### System Requirements
+## Prerequisites
 
-| Requirement | Specification |
-| :--- | :--- |
-| **Host OS** | Ubuntu 24.04 LTS (Native PC, Container, or WSL) |
-| **Disk Space** | 50GB minimum (The script generates a 12GB+ RootFS, plus pmbootstrap caches) |
-| **Target Device** | POCO F1 (Beryllium) |
-| **Firmware Source** | Mobian Weekly SDM845 (For SSH hardware harvesting) or local archive |
+### Host System
+* **OS:** Ubuntu 22.04 LTS or newer (x86_64).
+* **Storage:** 40GB+ free space.
+* **Privileges:** Sudo access is required for debootstrap and filesystem mounting.
 
----
-
-### Available OS Flavors
-When generating your workspace, you can choose from the following environments. The script dynamically configures the correct Display Manager (`gdm3`, `sddm`, or `lightdm`) in the background so you never boot to a black screen.
-
-**Mobile Shells (Touch-First, Wayland Native)**
-* **Phosh:** Purism's mobile GNOME shell. Includes Squeekboard for virtual typing.
-* **Plasma Mobile:** KDE's mobile interface. Includes Maliit for virtual typing.
-
-**Desktop Flavors (Tablet/PC Experience)**
-* **GNOME Vanilla:** The standard Ubuntu desktop (`ubuntu-desktop-minimal`).
-* **KDE Plasma Vanilla:** The standard Kubuntu experience (`kde-plasma-desktop`).
-* **Ubuntu Unity Vanilla:** The classic left-dock interface (`ubuntu-unity-desktop`).
-* **XFCE Vanilla:** Fast, CPU-rendered, and rock-solid (`xubuntu-core`).
-
-*(Note: All desktop flavors automatically install the `onboard` virtual keyboard so you can log in without requiring a USB-C OTG hub, and have LibreOffice purged by default).*
+### Hardware
+* **Target:** Xiaomi Poco F1 (beryllium) with an unlocked bootloader.
+* **Donor:** A secondary Poco F1 running a functional Mobian installation (required for Script 3).
+* **Network:** Both the host and donor must be on the same local network for SSH harvesting.
 
 ---
 
-### Installation & Build Guide
+## Installation and Script Generation
 
-#### Step 1: Host Preparation & Firmware Harvesting
-1. Prepare your Ubuntu 24.04 host environment.
-2. **Harvest the Firmware:** Mainline Linux requires proprietary Qualcomm blobs (Audio UCMs, Modem rules) to talk to the SDM845 hardware. 
-   * Flash [Mobian Weekly](https://images.mobian.org/qcom/weekly/) to your POCO F1.
-   * Boot the phone, connect to Wi-Fi, and enable the SSH server: `sudo apt update && sudo apt install openssh-server && sudo systemctl enable ssh`
-   * *Note: The default Mobian password is `1234`.*
-3. Copy the master `deploy_workspace.sh` script from this repo into an empty folder on your PC and run it.
+To initialize the workspace, run the deployment script. This generates the seven modular scripts required for the build process.
 
-#### Step 2: Critical pmbootstrap Quirks
-When the script triggers `pmbootstrap init`, pay attention to this upstream quirk:
-* **The Display Bug:** Kernels newer than 6.14 currently suffer from a DSI panel initialization failure (resulting in a blank screen). We **highly recommend** choosing the **`v25.06`** channel during initialization. This locks the build to a stable kernel branch that properly initializes the Tianma and EBBG screens. Testing the `edge` channel is done at your own risk.
-* **The Ghost Password:** During the install phase, pmbootstrap will ask for a user password. Enter any value; it is a placeholder that our Ubuntu chroot completely ignores.
-
-#### Step 3: Script Execution Flow
-Run the generated scripts in this exact order.
-
-1. **1_preflight.sh**: Installs host dependencies (qemu, debootstrap) and creates your `build.env` configuration.
-2. **2_pmos_setup.sh**: Compiles the mainline kernel via pmbootstrap, injects UFS timing fixes (`rootdelay=5`), and clones the hardware UUIDs.
-3. **3_firmware_fetcher.sh**: SSHs into your live Mobian phone, bundles the hardware directories, and pulls them to your host PC.
-4. **4_the_transplant.sh**: The heavy lifter. Builds a clean Ubuntu ARM64 root filesystem, injects the kernel and firmware, installs your chosen UI, and purges LibreOffice.
-5. **5_enter_chroot.sh**: *(Optional)* Safely mounts host pipes (`/proc`, `/run`, `/sys`) and drops you into the OS as root for manual tweaking.
-6. **6_seal_rootfs.sh**: Packs the raw folder into flashable Android sparse images.
-7. **7_kernel_menuconfig.sh**: *(Optional)* A quick-launch menu for advanced kernel `kconfig` editing and `deviceinfo` patching.
+```bash
+bash deploy_workspace.sh
+```
 
 ---
 
-### Flashing & Deployment
+## Step-by-Step Build Instructions
 
-#### Method A: Internal Storage (The Hijack)
-This wipes Android completely. Boot the POCO F1 into Fastboot mode (Power + Volume Down) and execute:
+### 1. Pre-Flight Setup
+```bash
+bash 1_preflight.sh
+```
+Initializes host dependencies and saves your configuration (username, password, UI choice, and image size) to `build.env`.
+
+### 2. postmarketOS Foundation
+```bash
+bash 2_pmos_setup.sh
+```
+Initializes `pmbootstrap`. When prompted, you must select:
+* **Channel:** v25.06
+* **Vendor:** xiaomi
+* **Device:** beryllium
+* **UI:** none
+* **Init:** systemd
+
+The script patches the kernel command line for UFS compatibility and clones the partition UUIDs to ensure the Ubuntu RootFS is mountable by the pmOS initramfs.
+
+### 3. Mandatory Firmware Harvest
+```bash
+bash 3_firmware_fetcher.sh
+```
+Requires the Mobian donor device's IP address. This script performs a mandatory extraction of:
+* **ALSA UCM:** Required for audio routing and speaker/mic functionality.
+* **ModemManager:** Required for LTE, SMS, and Voice calls.
+* **udev Rules:** Required for hardware peripheral permissions (GPU, Sensors).
+* **Proprietary Blobs:** WiFi, Bluetooth, and Adreno GPU firmware.
+
+### 4. The Transplant (OS Build)
+```bash
+bash 4_the_transplant.sh
+```
+Generates the Ubuntu Noble base via debootstrap and merges the kernel from Stage 2 with the hardware profiles from Stage 3. It then chroots into the environment to install the selected UI (Phosh, Plasma Mobile, etc.).
+
+### 5. Manual Maintenance
+```bash
+bash 5_enter_chroot.sh
+```
+Provides a hardened entry point into the Ubuntu chroot for manual software installation or configuration tweaks.
+
+### 6. Image Sealing
+```bash
+bash 6_seal_rootfs.sh
+```
+Allocates the final images, applies the cloned UUIDs via `mkfs.ext4`, and converts the raw images into Android-compatible sparse images (`.img`).
+
+### 7. Kernel Configuration
+```bash
+bash 7_kernel_menuconfig.sh
+```
+Optional utility to modify kernel drivers via menuconfig or edit the `deviceinfo` file.
+
+---
+
+## Porting to Other Devices
+
+To adapt this toolkit for a different device, the following manual updates are required:
+
+1.  **Identifiers:** Perform a global search and replace for `xiaomi` and `beryllium` with your target vendor and codename.
+2.  **Storage Logic:** If the target device uses eMMC instead of UFS, you may reduce the `rootdelay=5` flag in Script 2.
+3.  **Firmware Source:** If a Mobian donor is unavailable, Script 3 must be modified to pull blobs from an Android `/vendor` partition or a local directory.
+4.  **Audio Mapping:** In Script 4, ensure the ALSA UCM paths match the SoC of the new target (e.g., `ucm2/conf.d/sdm845`).
+
+---
+
+## Deployment (Flashing)
+
+After completing Script 6, place the target device in Fastboot mode and execute:
+
 ```bash
 fastboot flash boot pmos_boot.img
 fastboot flash system ubuntu_beryllium_boot_sparse.img
 fastboot flash userdata ubuntu_beryllium_root_sparse.img
 fastboot reboot
 ```
-**CRITICAL:** After sending the reboot command, do NOT touch the power button. The initial boot sequence requires several minutes to expand the filesystem and initialize the Display Manager. Just wait.
-
-#### Method B: MicroSD Card Testing
-Use `fdisk` or `gparted` to create two Ext4 partitions on a MicroSD card. Use `dd` to flash the **Raw** (`.img`) files to the SD card. You must still flash the `pmos_boot.img` to the phone's internal `/boot` partition via Fastboot to trigger the kernel.
 
 ---
 
-### Advanced: Kernel Debugging & Verbose Boot
-If your POCO F1 is hanging on the postmarketOS splash screen and you need to read the kernel `dmesg` logs to see what hardware failed, you can force a verbose matrix-style boot.
+## Troubleshooting
 
-#### Method 1: On-the-Fly Fastboot Injection (Live Boot Only)
-For a quick, temporary test without recompiling the image, you can instruct Fastboot to inject the flags directly into RAM. *Note: Depending on your specific Xiaomi firmware version, the Android Bootloader may block real-time string injections. If the screen remains blank, use Method 2.*
-```bash
-fastboot --cmdline "PMOS_NOSPLASH console=tty0" boot pmos_boot.img
-```
+* **Black Screen on Boot:** Ensure the v25.06 channel was used in Step 2.
+* **No Audio:** Verify that the ALSA UCM harvest in Step 3 completed without SSH errors.
+* **Filesystem Read-Only:** Verify the UUID cloning in Step 2; if the UUIDs in `build.env` do not match the final images, the initramfs will fail to mount the RootFS as writeable.
 
-#### Method 2: Permanent Header Modification (`deviceinfo` trick)
-To bake the verbose flags permanently into the boot image header:
-1. On your host PC, locate your deviceinfo file:
-   `nano ~/.local/var/pmbootstrap/cache_git/pmaports/device/*/device-xiaomi-beryllium/deviceinfo`
-2. Scroll to the bottom and add (or modify) the command line variable:
-   `deviceinfo_kernel_cmdline="PMOS_NOSPLASH console=tty0 msm.vblank_workaround=0"`
-3. Rebuild the ramdisk and export the new boot image:
-   `pmbootstrap initfs && pmbootstrap export`
-4. Flash the resulting `/tmp/postmarketOS-export/boot.img` to your device. The splash screen will be permanently disabled, routing all kernel text directly to the display.
-
----
-*(For a deeper dive into how the dual-UUID partition spoofing works, please refer to the `Engineering-Report.md` document).*
-
+## Refer to the Readme(v1.0a) for more of a general idea of the project
+## As well as the Engineering Report (Future Roadmap) for more details Long-Term
