@@ -1,4 +1,3 @@
-cat << 'DEPLOY_EOF' > deploy_workspace.sh
 #!/bin/bash
 set -e
 
@@ -494,6 +493,3 @@ chmod +x 1_preflight.sh 2_pmos_setup.sh 3_firmware_fetcher.sh 4_the_transplant.s
 
 echo ">>> Workspace scripts generated successfully!"
 echo ">>> Run 'bash 1_preflight.sh' to begin the process."
-DEPLOY_EOF
-
-bash deploy_workspace.sh

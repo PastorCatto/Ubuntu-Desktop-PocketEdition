@@ -48,7 +48,18 @@ STEP 3
 	Run them in the following order (skipping the Optional bits)
 	[ The Build Scripts: Execution Order ]
 
-  +-- deploy_workspace.sh
+
+#### Broken AI Generate file layout below, refer to the main README.MD 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ +-- deploy_workspace.sh
   |   (Run Once) The master generator. Run this first to spawn the script suite below.
   |
   +-- 1_preflight.sh
