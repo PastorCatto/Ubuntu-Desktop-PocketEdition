@@ -124,7 +124,7 @@ fastboot reboot
 
 * **Black Screen on Boot:** Ensure the v25.06 channel was used in Step 2.
 * **No Audio:** Verify that the ALSA UCM harvest in Step 3 completed without SSH errors.
-* **Filesystem Read-Only:** Verify the UUID cloning in Step 2; if the UUIDs in `build.env` do not match the final images, the initramfs will fail to mount the RootFS as writeable.
+* **Filesystem (Waiting on RootFS):** Verify the UUID cloning in Step 2; if the UUIDs in `build.env` do not match the final images, the initramfs will fail to mount the RootFS as writeable.
 
 ## Refer to the Readme(v1.0a) for more of a general idea of the project
 ## As well as the Engineering Report (Future Roadmap) for more details Long-Term
