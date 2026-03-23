@@ -7,7 +7,7 @@ export DEBIAN_FRONTEND=noninteractive
 echo "--- 1. Installing All Dependencies ---"
 apt-get update
 # Includes standard build tools + the specific headers we found missing today
-apt-get install -y build-essential git pkg-config meson ninja-build libudev-dev liblzma-dev
+apt-get install -y build-essential git pkg-config meson ninja-build libudev-dev liblzma-dev libzstd-dev
 
 # Create a clean working directory
 WORKDIR="/tmp/qcom-build"
@@ -43,6 +43,15 @@ make
 make install prefix=/usr/local
 cd ..
 
+echo "--- Building tqftpserv (Meson) ---"
+cd /tmp/qcom-build
+git clone --depth 1 https://github.com/linux-msm/tqftpserv.git
+cd tqftpserv
+meson setup build --prefix=/usr/local
+ninja -C build
+ninja -C build install
+cd ..
+
 echo "--- 6. Writing Systemd Services ---"
 cat <<EOF > /etc/systemd/system/qrtr-ns.service
 [Unit]
@@ -66,9 +75,22 @@ Restart=always
 WantedBy=multi-user.target
 EOF
 
+cat <<EOF > /etc/systemd/system/tqftpserv.service
+[Unit]
+Description=Qualcomm TFTP Server (tqftpserv)
+Requires=qrtr-ns.service
+After=qrtr-ns.service
+[Service]
+ExecStart=/usr/local/bin/tqftpserv
+Restart=always
+[Install]
+WantedBy=multi-user.target
+EOF
+
 # Enable the services so they start automatically on boot in the final image
 systemctl enable qrtr-ns.service
 systemctl enable pd-mapper.service
+systemctl enable tqftpserv.service
 
 echo "--- 7. Cleaning up Image Space ---"
 # Remove source code and clear the apt cache to keep your image size small

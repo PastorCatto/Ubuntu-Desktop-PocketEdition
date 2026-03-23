@@ -1,5 +1,6 @@
 # Project Beryllium: Ubuntu-pmOS Hybrid Porting Toolkit
 # Document version v2.0a (the Public Port Toolkit Update)
+# Update Coming Soon (will re-do all the documentation for new and adapted scripts)
 
 This repository contains a modular toolkit for building a custom Ubuntu Noble (24.04) image for the Xiaomi Poco F1 (beryllium). It utilizes a "Hybrid Transplant" methodology, employing postmarketOS (pmOS) as the hardware-enablement foundation and a live Mobian installation for mandatory proprietary firmware and hardware mapping.
 
@@ -24,7 +25,7 @@ The build process creates a functional Linux environment by merging three distin
 
 ### Hardware
 * **Target:** Xiaomi Poco F1 (beryllium) with an unlocked bootloader.
-* **Donor:** A secondary Poco F1 running a functional Mobian installation (required for Script 3).
+* **Donor:** A secondary Poco F1 running a functional Mobian installation (required for Script 3). (can also be Target Device with Mobian Installed)
 * **Network:** Both the host and donor must be on the same local network for SSH harvesting.
 
 ---
@@ -60,7 +61,7 @@ Initializes `pmbootstrap`. When prompted, you must select:
 
 The script patches the kernel command line for UFS compatibility and clones the partition UUIDs to ensure the Ubuntu RootFS is mountable by the pmOS initramfs.
 
-### 3. Mandatory Firmware Harvest
+### 3. Mandatory Firmware Harvest (Run: "sudo apt update && sudo apt install openssh-server -y && sudo systemctl enable ssh" On the Donor Device Before running this script!) 
 ```bash
 bash 3_firmware_fetcher.sh
 ```
@@ -100,7 +101,7 @@ Optional utility to modify kernel drivers via menuconfig or edit the `deviceinfo
 
 To adapt this toolkit for a different device, the following manual updates are required:
 
-1.  **Identifiers:** Perform a global search and replace for `xiaomi` and `beryllium` with your target vendor and codename.
+1.  **Identifiers:** Perform a global search and replace for `xiaomi` and `beryllium` with your target vendor and codename. (Refer To the Developer Toolkit, script provided)
 2.  **Storage Logic:** If the target device uses eMMC instead of UFS, you may reduce the `rootdelay=5` flag in Script 2.
 3.  **Firmware Source:** If a Mobian donor is unavailable, Script 3 must be modified to pull blobs from an Android `/vendor` partition or a local directory.
 4.  **Audio Mapping:** In Script 4, ensure the ALSA UCM paths match the SoC of the new target (e.g., `ucm2/conf.d/sdm845`).
@@ -124,7 +125,7 @@ fastboot reboot
 
 * **Black Screen on Boot:** Ensure the v25.06 channel was used in Step 2.
 * **No Audio:** Verify that the ALSA UCM harvest in Step 3 completed without SSH errors.
-* **Filesystem Read-Only:** Verify the UUID cloning in Step 2; if the UUIDs in `build.env` do not match the final images, the initramfs will fail to mount the RootFS as writeable.
+* **Filesystem (Waiting on RootFS):** Verify the UUID cloning in Step 2; if the UUIDs in `build.env` do not match the final images, the initramfs will fail to mount the RootFS.
 
 ## Refer to the Readme(v1.0a) for more of a general idea of the project
 ## As well as the Engineering Report (Future Roadmap) for more details Long-Term
