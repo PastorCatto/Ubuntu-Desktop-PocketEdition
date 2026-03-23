@@ -2,6 +2,7 @@
 # Document Version 2.1a
 # Note: the Devices/Xiaomi_beryllium folder is where i do most of my work (Updated first)
 # hence if you want BLEEDING EDGE (STRONGLY ADVISE AGAINST) go there for the absolute LATEST scripts
+# DeveloperStarterKits are Built against the EDGE versions (pass testing with no bugs, and excluding ALPHA SDM845 scripts) 
 Ubuntu Desktop PocketEdition is an advanced porting toolkit designed to deploy a functional, desktop-class Ubuntu Noble (24.04) environment onto the Xiaomi Poco F1 (beryllium) and related Snapdragon 845 (SDM845) devices. 
 
 The project bridges the gap between mobile hardware and a standard Linux desktop by utilizing a unique "Hybrid Transplant" methodology. It leverages the hardware-enablement foundation of postmarketOS (pmOS), the stability of a vanilla Ubuntu RootFS, and verified vendor firmware from the LineageOS ecosystem.
