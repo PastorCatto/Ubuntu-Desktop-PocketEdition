@@ -86,13 +86,14 @@ fastboot reboot
 
 | Feature | Status | Note |
 | :--- | :--- | :--- |
-| **CPU/GPU** | ✅ Working | Full hardware acceleration via Freedreno. |
+| **CPU/GPU** | ✅ Working* | Full hardware acceleration via Freedreno. |
 | **Wi-Fi** | ✅ Stable | Fixed via TFTP + Pristine Kernel Firmware. |
 | **Audio** | ✅ Working | Requires ALSA UCM2 maps (included). |
 | **Touch/LCD** | ✅ Working | Native support. |
 | **Cellular/LTE** | ⚠️ Testing | Modem initializes; requires `mcfg.tmp` injection. |
 | **Sensors** | ❌ Disabled | SLPI disabled to ensure WiFi/TrustZone stability. |
-
+* Possible bugs with the pmOS kernel, as its having bugs (similar behaviour to stock postmarketOS v25.06)
+kernel 6.14-RC5 is what i currently use, will build against newer kernel! (can be done using edge or v25.12 version of pmOS)
 ---
 
 ## Troubleshooting
