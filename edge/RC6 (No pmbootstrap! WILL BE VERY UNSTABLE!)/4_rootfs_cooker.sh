@@ -66,13 +66,51 @@ update-initramfs -c -k all
 # 5. Install UI Packages
 apt-get install -y ${UI_PKG} ${DM_PKG} ${EXTRA_PKG}
 
-# 6. Apply the Golden Wi-Fi Payload Fix
-FW_DIR="/lib/firmware/ath10k/WCN3990/hw1.0"
-mkdir -p "\$FW_DIR"
-GITLAB_BASE="https://gitlab.com/kernel-firmware/linux-firmware/-/raw/main/ath10k/WCN3990/hw1.0"
-curl -L -f -o "\$FW_DIR/firmware-5.bin" "\$GITLAB_BASE/firmware-5.bin"
-curl -L -f -o "\$FW_DIR/board-2.bin" "\$GITLAB_BASE/board-2.bin"
-chattr +i "\$FW_DIR/firmware-5.bin"
+# 6. Qualcomm Firmware Bundle (WiFi + GPU + DSP/Modem)
+echo ">>> Detecting installed kernel version..."
+KVER=$(ls /boot/vmlinuz-* 2>/dev/null | sed 's|/boot/vmlinuz-||' | sort -V | tail -n 1)
+echo ">>> Kernel detected: $KVER"
+
+GITLAB_FW="https://gitlab.com/kernel-firmware/linux-firmware/-/raw/main"
+
+fetch_fw() {
+    local DEST_DIR="\$1"
+    local FILE="\$2"
+    mkdir -p "\$DEST_DIR"
+    if curl -L -f -s -o "\$DEST_DIR/\$(basename \$FILE)" "\$GITLAB_FW/\$FILE"; then
+        echo ">>>   OK: \$FILE"
+    else
+        echo ">>>   WARN: Failed to fetch \$FILE (non-fatal)"
+    fi
+}
+
+# --- WiFi: ath10k WCN3990 ---
+echo ">>> Fetching WiFi firmware (ath10k WCN3990)..."
+fetch_fw "/lib/firmware/ath10k/WCN3990/hw1.0" "ath10k/WCN3990/hw1.0/firmware-5.bin"
+fetch_fw "/lib/firmware/ath10k/WCN3990/hw1.0" "ath10k/WCN3990/hw1.0/board-2.bin"
+# Pin firmware-5.bin to prevent linux-firmware package from overwriting it
+chattr +i "/lib/firmware/ath10k/WCN3990/hw1.0/firmware-5.bin"
+
+# --- GPU: Adreno 630 (non-signed, universal for all SDM845) ---
+echo ">>> Fetching GPU firmware (Adreno 630)..."
+fetch_fw "/lib/firmware/qcom" "qcom/a630_sqe.fw"
+fetch_fw "/lib/firmware/qcom" "qcom/a630_gmu.bin"
+
+# --- GPU: Adreno 630 ZAP shader (signed, works on all non-secured SDM845) ---
+echo ">>> Fetching Adreno 630 ZAP shader..."
+fetch_fw "/lib/firmware/qcom/sdm845" "qcom/sdm845/a630_zap.mbn"
+
+# --- DSP/Modem blobs (signed, works on all non-secured SDM845) ---
+echo ">>> Fetching DSP and modem firmware..."
+for fw in adsp.mbn cdsp.mbn mba.mbn modem.mbn wlanmdsp.mbn; do
+    fetch_fw "/lib/firmware/qcom/sdm845" "qcom/sdm845/\$fw"
+done
+
+# --- Venus video firmware ---
+echo ">>> Fetching Venus video firmware..."
+fetch_fw "/lib/firmware/qcom/venus-5.2" "qcom/venus-5.2/venus.mbn"
+
+echo ">>> Firmware bundle complete for kernel \$KVER"
 
 # 7. Force Auto-Start for Modem IPC stack
 mkdir -p /etc/systemd/system/multi-user.target.wants/

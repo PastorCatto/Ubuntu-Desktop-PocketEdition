@@ -30,10 +30,9 @@ echo "ROOTFS_UUID=$BUILD_UUID" >> build.env
 # -----------------------------------------
 echo ">>> Hunting for custom kernel assets..."
 
-KERNEL=$(ls -1tr "$ROOTFS_DIR"/boot/vmlinuz* "$ROOTFS_DIR"/boot/Image* 2>/dev/null | tail -n 1)
+KERNEL=$(ls -1tr "$ROOTFS_DIR"/boot/vmlinuz* "$ROOTFS_DIR"/boot/Image* 2>/dev/null | grep -v dtb | tail -n 1)
 INITRD=$(ls -1tr "$ROOTFS_DIR"/boot/initrd.img* "$ROOTFS_DIR"/boot/initramfs* 2>/dev/null | tail -n 1)
 
-# Poco F1 display panel picker
 echo ""
 echo "Select your Poco F1 display panel variant:"
 echo "1) Tianma  (most common, default)"
@@ -41,21 +40,44 @@ echo "2) EBBG"
 read -p "Choice [1-2, default 1]: " PANEL_CHOICE
 PANEL_CHOICE=${PANEL_CHOICE:-1}
 case $PANEL_CHOICE in
-    2) DTB_NAME="sdm845-xiaomi-beryllium-ebbg.dtb" ; PANEL_NAME="EBBG" ;;
+    2) DTB_NAME="sdm845-xiaomi-beryllium-ebbg.dtb"  ; PANEL_NAME="EBBG"   ;;
     *) DTB_NAME="sdm845-xiaomi-beryllium-tianma.dtb" ; PANEL_NAME="Tianma" ;;
 esac
 echo ">>> Using panel: $PANEL_NAME ($DTB_NAME)"
 
-DTB=$(find \
-    "$ROOTFS_DIR/usr/lib" \
-    "$ROOTFS_DIR/boot" \
+DTB=$(find "$ROOTFS_DIR/usr/lib" "$ROOTFS_DIR/boot" \
     -type f -name "$DTB_NAME" 2>/dev/null | head -n 1)
 
-if [[ -z "$DTB" ]]; then
-    echo "ERROR: Could not find $DTB_NAME. Available beryllium DTBs:"
-    find "$ROOTFS_DIR/usr/lib" "$ROOTFS_DIR/boot" -name "*beryllium*.dtb" 2>/dev/null || true
+if [[ -z "$KERNEL" || -z "$INITRD" || -z "$DTB" ]]; then
+    echo "ERROR: Missing boot assets. Contents of /boot:"
+    ls -la "$ROOTFS_DIR/boot/"
     exit 1
 fi
+
+echo ">>> Harvested Assets:"
+echo "    Kernel: $(basename "$KERNEL")"
+echo "    Initrd: $(basename "$INITRD")"
+echo "    DTB:    $(basename "$DTB")"
+
+# SDM845 requires DTB appended directly to the kernel Image
+echo ">>> Appending DTB to kernel (required for SDM845 bootloader)..."
+KERNEL_DTB=$(mktemp /tmp/kernel-dtb-XXXX)
+cat "$KERNEL" "$DTB" > "$KERNEL_DTB"
+echo ">>> kernel+dtb size: $(du -h "$KERNEL_DTB" | cut -f1)"
+
+# -----------------------------------------
+# Boot Verbosity Picker
+# -----------------------------------------
+echo ""
+echo "Select boot verbosity:"
+echo "1) Quiet (splash screen, default)"
+echo "2) Verbose (full kernel log on boot)"
+read -p "Choice [1-2, default 1]: " BOOT_VERBOSE
+BOOT_VERBOSE=${BOOT_VERBOSE:-1}
+case $BOOT_VERBOSE in
+    2) BOOT_CMDLINE_EXTRA="" ;;
+    *) BOOT_CMDLINE_EXTRA="quiet splash" ;;
+esac
 
 # -----------------------------------------
 # Step 3: Fstab Injection
@@ -71,21 +93,21 @@ FSTAB"
 # -----------------------------------------
 echo ">>> Packing boot.img..."
 mkbootimg \
-  --kernel "$KERNEL" \
+  --kernel "$KERNEL_DTB" \
   --ramdisk "$INITRD" \
-  --dtb "$DTB" \
   --pagesize 4096 \
   --base 0x00000000 \
   --kernel_offset 0x00008000 \
   --ramdisk_offset 0x01000000 \
   --tags_offset 0x00000100 \
-  --cmdline "root=UUID=${BUILD_UUID} rw rootwait console=tty0 console=ttyMSM0,115200n8 earlycon=qcom_geni,0x00A90000 PMOS_NOSPLASH" \
+  --cmdline "root=UUID=${BUILD_UUID} rw rootwait console=tty0 console=ttyMSM0,115200n8 earlycon=qcom_geni,0x00A90000 PMOS_NOSPLASH $BOOT_CMDLINE_EXTRA" \
   -o "$BOOT_IMG"
+
+rm -f "$KERNEL_DTB"
 echo ">>> boot.img packed: $(du -h "$BOOT_IMG" | cut -f1)"
 
 # -----------------------------------------
 # Step 5: Burn RootFS via loop device + rsync
-# (replaces broken mke2fs -d approach)
 # -----------------------------------------
 IMG_MB=$((IMAGE_SIZE * 1024))
 echo ">>> Allocating ${IMAGE_SIZE}GB raw image..."
