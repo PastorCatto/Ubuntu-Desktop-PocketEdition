@@ -2,13 +2,12 @@
 set -e
 source build.env
 echo "======================================================="
-echo "   [2/7] Kernel Payload Staging (Dynamic Fetch)"
+echo "   Mobuntu Orange ${UBUNTU_CODENAME} - [2/7] Kernel Payload Staging"
 echo "======================================================="
 echo ">>> Scraping Mobian repository for the latest SDM845 Kernel..."
 mkdir -p kernel_payload
 cd kernel_payload
 
-# Correct Mobian repository base URL
 POOL_URL="https://repo.mobian-project.org/pool/main/l/"
 
 echo ">>> Fetching repository index..."
@@ -40,7 +39,7 @@ HDR_FILE=$(grep -oE "linux-headers-[0-9a-zA-Z\.\-]+-sdm845_[^\"]+_arm64\.deb" pk
 
 if [ -z "$IMG_FILE" ] || [ -z "$HDR_FILE" ]; then
     echo ">>> ERROR: Could not parse kernel .deb files from $SUBDIR_URL"
-    echo ">>> The repository structure may have changed again."
+    echo ">>> The repository structure may have changed."
     exit 1
 fi
 
@@ -53,8 +52,10 @@ wget --show-progress -U "Mozilla/5.0" -O linux-image.deb "${SUBDIR_URL}${IMG_FIL
 echo ">>> Downloading Headers..."
 wget --show-progress -U "Mozilla/5.0" -O linux-headers.deb "${SUBDIR_URL}${HDR_FILE}"
 
-# Clean up index files
 rm pool_index.html pkg_index.html
 cd ..
-echo ">>> Kernel payloads secured in ./kernel_payload/."
-echo ">>> Proceed to Script 4 (The Transplant)."
+
+echo "======================================================="
+echo "   Kernel payloads secured in ./kernel_payload/"
+echo "   Proceed to Script 4 (The Transplant)."
+echo "======================================================="
