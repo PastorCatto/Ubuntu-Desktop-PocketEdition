@@ -160,7 +160,7 @@ if command -v img2simg &>/dev/null; then
     echo ">>> Then run:"
     echo ""
     echo "   fastboot flash boot    $(pwd)/$BOOT_IMG"
-    echo "   fastboot flash system  $(pwd)/$ROOT_SPARSE"
+    echo "   fastboot flash -S 100M userdata  $(pwd)/$ROOT_SPARSE"
     echo "   fastboot reboot"
     echo ""
     echo ">>> NOTE: On first boot droid-juicer will extract signed"
@@ -176,7 +176,7 @@ else
     echo ">>> Then run:"
     echo ""
     echo "   fastboot flash boot    $(pwd)/$BOOT_IMG"
-    echo "   fastboot flash system  $(pwd)/$ROOT_IMG"
+    echo "   fastboot flash -S 100M userdata  $(pwd)/$ROOT_IMG"
     echo "   fastboot reboot"
     echo "======================================================="
 fi
