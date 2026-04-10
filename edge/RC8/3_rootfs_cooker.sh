@@ -71,17 +71,23 @@ deb http://ports.ubuntu.com/ubuntu-ports/ ${UBUNTU_RELEASE}-updates main restric
 deb http://ports.ubuntu.com/ubuntu-ports/ ${UBUNTU_RELEASE}-security main restricted universe multiverse
 APT_EOF
 
-# Add Mobian repo for phrog, droid-juicer, qbootctl
+# Update base repos and install curl + ca-certificates first
+apt-get update
+apt-get install -y curl ca-certificates
+
+# Now you can safely use curl to add the Mobian repo
 curl -fsSL https://repo.mobian.org/mobian.gpg -o /etc/apt/trusted.gpg.d/mobian.gpg
 echo "deb http://repo.mobian.org/ staging main non-free-firmware" \
     > /etc/apt/sources.list.d/mobian.list
 
+# Update again to fetch the new Mobian package lists
 apt-get update
 apt-get upgrade -y
 
 # ------- 2. Base system -------
+# (curl and ca-certificates removed from here since they are already installed)
 apt-get install -y \
-    initramfs-tools sudo curl wget ca-certificates \
+    initramfs-tools sudo wget \
     network-manager modemmanager \
     linux-firmware bluez \
     qrtr-tools rmtfs tqftpserv protection-domain-mapper \
