@@ -30,7 +30,7 @@ The latest version introduces Droid-juicer, which should bypass the need to harv
 * **Multi-Device Builder:** with the introduction of RC7, we now have added initial support for both POCO F1 and now Oneplus 6/T and Xiaomi Mi 8 (UNTESTED!)
 * **Ubuntu Version Selector:** RC7 introduces the ability to choose a version of Ubuntu based on a query of availible repos for supported versions (as low as Trusty Tahr 14.04! 24.04 is the lowest SUPPORTED BY US!, anything lower is at YOUR OWN RISK!)
 
-# RC8 Does not contain the distro version selector, instead you get 24.04 -> 25.10 (will bring back in RC9)
+# RC8 Does not contain the distro version selector, instead you get to pick between 24.04 -> 25.10 (will bring back in RC9)
 
 
 
