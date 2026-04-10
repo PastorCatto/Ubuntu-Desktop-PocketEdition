@@ -100,29 +100,15 @@ echo ">>> Installing SDM845 kernel..."
 dpkg -i /tmp/kernel_payload/*.deb || apt-get install -f -y
 update-initramfs -c -k all
 
-# ------- 4. Phosh + greetd + phrog -------
-echo ">>> Installing Phosh display stack..."
-apt-get install -y phosh phosh-osk-stub greetd phrog
+# ------- 4. Ubuntu Desktop Minimal -------
+echo ">>> Installing Ubuntu Desktop Minimal display stack...(Manual OVERRIDE!)"
+apt-get install -y ubuntu-desktop-minimal
 
-# Create greeter user (safety net in case phrog package doesn't)
-useradd -r -m -G video greeter 2>/dev/null || true
-
-# Write greetd config pointing to phrog
-mkdir -p /etc/greetd
-cat > /etc/greetd/config.toml << GREETD_EOF
-[terminal]
-vt = 1
-
-[default_session]
-command = "phrog"
-user = "greeter"
-GREETD_EOF
-
-systemctl enable greetd
+systemctl enable gdm3
 # Disable any conflicting display managers
-systemctl disable gdm3    2>/dev/null || true
 systemctl disable lightdm 2>/dev/null || true
 systemctl disable sddm    2>/dev/null || true
+systemctl disable greetd  2>/dev/null || true
 
 # ------- 5. droid-juicer + qbootctl -------
 echo ">>> Installing droid-juicer and qbootctl..."
