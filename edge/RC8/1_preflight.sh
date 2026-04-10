@@ -60,11 +60,13 @@ echo "Ubuntu release:"
 echo "1) noble    (24.04 LTS, recommended)"
 echo "2) oracular (24.10)"
 echo "3) plucky   (25.04)"
-read -p "Choice [1-3, default 1]: " REL_CHOICE
+echo "4) resolute (26.04 LTS Beta)"
+read -p "Choice [1-4, default 1]: " REL_CHOICE
 REL_CHOICE=${REL_CHOICE:-1}
 case $REL_CHOICE in
     2) UBUNTU_RELEASE="oracular" ;;
     3) UBUNTU_RELEASE="plucky"   ;;
+    4) UBUNTU_RELEASE="resolute" ;;
     *) UBUNTU_RELEASE="noble"    ;;
 esac
 echo ">>> Using Ubuntu release: $UBUNTU_RELEASE"
