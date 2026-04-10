@@ -69,6 +69,7 @@ cat > /etc/apt/sources.list << APT_EOF
 deb http://ports.ubuntu.com/ubuntu-ports/ ${UBUNTU_RELEASE} main restricted universe multiverse
 deb http://ports.ubuntu.com/ubuntu-ports/ ${UBUNTU_RELEASE}-updates main restricted universe multiverse
 deb http://ports.ubuntu.com/ubuntu-ports/ ${UBUNTU_RELEASE}-security main restricted universe multiverse
+deb http://ports.ubuntu.com/ubuntu-ports/ ${UBUNTU_RELEASE}-backports main restricted universe multiverse
 APT_EOF
 
 # Update base repos and install curl + ca-certificates first
