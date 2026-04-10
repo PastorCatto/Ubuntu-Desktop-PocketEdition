@@ -19,6 +19,7 @@ This toolkit constructs a functional OS by doing a series of the following
 1.  **Ubuntu Rootfs:** so we need to build the OS, we do that using debootstrap, so we are able to pick and choose any avalible version and generate a chroot.
 2.  **Firmware Enablement Stack:** With RC7 of our build stack, we now utilize Droid-Juicer and fwload, only quirk seems to be rotation (very much testing as of writing)
 3.  **The Boot Stack (New!):** Previously i used to rely on pmbootstrap, but refering to issue#1, there was a better way, so now when the rootfs is made, we pull the kernel and everything, and pack it outside the chroot, so its easy to update the kernel, just install a newer version and remove the old one!
+4.  Starting with RC9 (planned) we intend to also implement an OTA Boot Updater, where the OS auto-flashes the new boot.img to the /boot partition, eliminating the need to flash a new Boot.img manually after updates! (thanks to arkadin91 for the OTA Script for initramfs)
 
 ---
 
