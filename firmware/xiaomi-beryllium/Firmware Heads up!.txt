@@ -1,5 +1,0 @@
-FIRMWARE CHANGELOG (v1.1)
-
-ADDED: UCM2 configs for beryllium ONLY! 
-
-Note: Oneplus Does NOT NEED THIS FIRMWARE as we can get that directly from the linux-firmware package
