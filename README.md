@@ -72,13 +72,13 @@ Script 1 now prompts for your preferred desktop environment:
 
 | Option | UI | Display Manager | Notes |
 | :--- | :--- | :--- | :--- |
-| 1 | Phosh* | greetd + phrog | Default, recommended for phones |
+| 1 | Phosh [x] | greetd + phrog | Default, recommended for phones |
 | 2 | Ubuntu Desktop Minimal | GDM3 | Touch-friendly GNOME |
 | 3 | Unity | LightDM | |
 | 4 | Plasma Desktop | SDDM | Better for tablets |
 | 5 | Plasma Mobile | SDDM | Touch-first KDE |
 | 6 | Lomiri | greetd | Ubuntu Touch shell — experimental, warning shown |
-* There seems to be an issue with phrog, where it just doesnt load. please use any other option (except lomiri)
+* [x]There seems to be an issue with phrog, where it just doesnt load. please use any other option (except lomiri)
   
 ### Firmware Strategy
 
