@@ -35,6 +35,14 @@ fi
 echo ">>> Staging kernel payload..."
 sudo cp -r kernel_payload/ "$ROOTFS_DIR/tmp/"
 
+# Stage firmware archive into chroot for post-apt re-application
+SCRIPT_DIR="$(dirname "$0")"
+LOCAL_FW_ARCHIVE="${SCRIPT_DIR}/firmware/${DEVICE_BRAND}-${DEVICE_CODENAME}/firmware.tar.gz"
+if [ -f "$LOCAL_FW_ARCHIVE" ]; then
+    echo ">>> Staging firmware archive for post-apt re-application..."
+    sudo cp "$LOCAL_FW_ARCHIVE" "$ROOTFS_DIR/tmp/firmware.tar.gz"
+fi
+
 echo ">>> Copying mkbootimg into rootfs..."
 sudo cp /usr/local/bin/mkbootimg "$ROOTFS_DIR/usr/local/bin/mkbootimg"
 sudo chmod +x "$ROOTFS_DIR/usr/local/bin/mkbootimg"
@@ -42,10 +50,11 @@ sudo chmod +x "$ROOTFS_DIR/usr/local/bin/mkbootimg"
 # -------------------------------------------------------
 # Step 3: Firmware staging (pre-chroot, method=git)
 # -------------------------------------------------------
+SCRIPT_DIR="$(dirname "$0")"
+LOCAL_FW_DIR="${SCRIPT_DIR}/firmware/${DEVICE_BRAND}-${DEVICE_CODENAME}"
+LOCAL_FW_ARCHIVE="${LOCAL_FW_DIR}/firmware.tar.gz"
+
 if [ "$FIRMWARE_METHOD" = "git" ] && [ -n "$FIRMWARE_REPO" ]; then
-    SCRIPT_DIR="$(dirname "$0")"
-    LOCAL_FW_DIR="${SCRIPT_DIR}/firmware/${DEVICE_BRAND}-${DEVICE_CODENAME}"
-    LOCAL_FW_ARCHIVE="${LOCAL_FW_DIR}/firmware.tar.gz"
     FW_STAGED=false
 
     # --- Priority 1: local firmware archive ---
@@ -150,7 +159,7 @@ apt-get install -y \
     initramfs-tools sudo \
     network-manager modemmanager \
     linux-firmware bluez \
-    pipewire pipewire-pulse wireplumber \
+    pulseaudio pulseaudio-module-bluetooth \
     openssh-server locales tzdata
 
 # ------- 5. Boot-method specific packages -------
@@ -243,6 +252,17 @@ if [ "\$FIRMWARE_METHOD" = "apt" ]; then
     echo ">>> Firmware method: apt (linux-firmware already installed)"
 fi
 # git method firmware was already staged before chroot
+
+# ------- 9b. Re-apply local firmware archive (wins over apt) -------
+# This runs AFTER apt to ensure our UCM maps and firmware blobs
+# are never overwritten by alsa-ucm-conf or linux-firmware packages.
+SCRIPT_DIR="${SCRIPT_DIR}"
+LOCAL_FW_ARCHIVE="${SCRIPT_DIR}/firmware/${DEVICE_BRAND}-${DEVICE_CODENAME}/firmware.tar.gz"
+if [ -f "/tmp/firmware.tar.gz" ]; then
+    echo ">>> Re-applying firmware archive (post-apt, ensures our files win)..."
+    tar -xzf /tmp/firmware.tar.gz -C /
+    echo ">>> Firmware archive re-applied."
+fi
 
 # ------- 10. Adreno 630 GPU firmware (not device-signed, safe to curl) -------
 echo ">>> Fetching Adreno 630 GPU firmware..."
@@ -359,7 +379,7 @@ if [ -n "${EXTRA_PKG}" ]; then
 fi
 
 # ------- Cleanup -------
-rm -rf /tmp/kernel_payload
+rm -rf /tmp/kernel_payload /tmp/firmware.tar.gz
 apt-get clean
 echo ">>> Chroot build complete."
 CHROOT_EOF
@@ -370,6 +390,15 @@ rm "$CHROOT_SCRIPT"
 
 echo ">>> Executing chroot build (this will take a while)..."
 sudo chroot "$ROOTFS_DIR" /bin/bash /tmp/chroot_setup.sh
+
+# -------------------------------------------------------
+# Post-chroot: Re-apply firmware archive (wins over apt)
+# -------------------------------------------------------
+if [ -f "$LOCAL_FW_ARCHIVE" ]; then
+    echo ">>> Re-applying firmware archive over apt files..."
+    sudo tar -xzf "$LOCAL_FW_ARCHIVE" -C "$ROOTFS_DIR/"
+    echo ">>> Firmware archive re-applied — UCM maps and blobs take priority."
+fi
 
 # -------------------------------------------------------
 # Step 6: Unmount
