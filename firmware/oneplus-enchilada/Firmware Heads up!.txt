@@ -1,0 +1,9 @@
+DOES NOT APPLY TO ONEPLUS 6/T!!!! ALREADY UPSTREAM (the required patches have already been done!)
+
+
+
+FIRMWARE CHANGELOG (v1.1)
+
+ADDED: UCM2 configs for beryllium ONLY! 
+
+Note: Oneplus Does NOT NEED THIS FIRMWARE as we can get that directly from the linux-firmware package
