@@ -1,13 +1,46 @@
-# Mobuntu Orange — Changelog (RC7-9 was assisted by Claude Sonnet 4.6 Extended)
+# Mobuntu Orange — Changelog
 
-# There was substantial progress made thanks to arkadin91 and his Ubuntu 26.04 Beta release image (and pointing me at Kupfer and SDM845-mainline for firmware!)
-# OTA script logic was provided by arkadin91
+> RC7–RC10.1 assisted by Claude Sonnet 4.6 (Anthropic)
+> Substantial progress and direction thanks to **arkadin91** — Ubuntu 26.04 Beta reference image, Kupfer lead, sdm845-mainline firmware discovery, and OTA script logic.
 
-## RC9 (Current session)
+---
+
+## RC10.1 (Latest)
+**UI Picker**
+- Script 1 now prompts for desktop environment: Phosh, Ubuntu Desktop Minimal, Unity, Plasma Desktop, Plasma Mobile, Lomiri
+- Each UI sets the correct display manager automatically — greetd+phrog for Phosh/Lomiri, GDM3 for GNOME, LightDM for Unity, SDDM for Plasma
+- Lomiri shows an explicit warning and y/N confirmation before proceeding
+- UI selection flows into `build.env` as `UI_NAME`, `UI_PACKAGES`, `UI_DM`, `UI_EXTRA_REPOS`
+- Script 3 chroot install section is now UI-aware, branches on `UI_NAME`
+
+**Firmware Archive System**
+- Added `firmware/<brand>-<codename>/` directory structure
+- Script 3 now checks for a local `firmware.tar.gz` before attempting git clone
+- Three-tier priority: local archive → git clone → OnePlus 6 fallback
+- Each firmware directory ships with a `README.txt` containing harvest instructions
+- Confirmed working: WiFi and GPU on Poco F1 using harvested firmware archive
+
+**Ubuntu 26.04 Support**
+- Added `devel` (26.04) to release picker with experimental warning + y/N confirm
+- Added `quill` (26.04 stable) as a disabled placeholder — falls back to noble
+- Trivial to enable when 26.04 officially releases
+
+**Bug Fixes**
+- Removed `/boot/efi` fstab entry — fake UUID `EEFB-EEFB` was causing systemd to drop to emergency mode on every boot
+- Fixed `cp: cannot overwrite non-directory` when staging firmware — changed `cp -r dir` to `cp -r dir/.`
+- Fixed `curl: command not found` in chroot — curl now installed in a dedicated bootstrap step before Mobian repo is added
+- Fixed nested heredoc `cat: '': No such file or directory` errors — replaced inner `cat > file << EOF` blocks with `printf` for greetd config and `/etc/hosts`
+- Fixed chroot step ordering — Ubuntu sources written and curl installed before Mobian GPG key fetch
+- Renumbered all chroot steps to reflect new ordering
+
+---
+
+## RC10
 **Device Config System**
-- Introduced `devices/*.conf` device profile system — all scripts now source a device config via `build.env`
+- Introduced `devices/*.conf` device profile system — all scripts source device config via `build.env`
 - Added device configs: `xiaomi-beryllium-tianma`, `xiaomi-beryllium-ebbg`, `oneplus-enchilada`, `oneplus-fajita`
 - Device configs carry all mkbootimg parameters, firmware method, kernel method, services, quirks, hostname, image label
+- Adding a new device requires only a new `.conf` file — no script changes needed
 
 **Firmware**
 - Replaced droid-juicer with direct `git clone` of `gitlab.com/sdm845-mainline/firmware-xiaomi-beryllium`
@@ -15,49 +48,50 @@
 - Added OnePlus 6 fallback: if git clone fails, copies `sdm845/oneplus6/` blobs from host `linux-firmware` into `sdm845/beryllium/` with a clear warning naming the source directory
 - OnePlus 6/6T use `apt` firmware method (blobs ship in upstream `linux-firmware`)
 
-**Boot method abstraction**
+**Boot Method Abstraction**
 - Script 5 branches on `BOOT_METHOD`: `mkbootimg` (fully implemented), `uboot` (placeholder), `uefi` (placeholder)
 - `BOOT_DTB_APPEND`, `BOOT_PANEL_PICKER`, all mkbootimg offsets driven from device config
 
-**Script 1 auto-run**
+**Script 1 Auto-Run**
 - After saving `build.env`, script 1 optionally chains directly into scripts 2 and 3
 
-**Script renumbering**
+**Script Renumbering**
 - Finalised 5-script pipeline: old `4,5,6` → new `3,4,5`
 
 ---
 
-## RC8
-**Phrog / greetd** (REMOVED TEMPORARILY)
+## RC9
+**Phrog / greetd**
 - Replaced GDM3 with `greetd` + `phrog` — login screen is native Phosh lockscreen, touch-friendly
 - No more broken GNOME UI state on first boot
 - Confirmed Phrog is the official greeter for Mobian/beryllium (FOSDEM 2025 demo was a Poco F1)
 - `greeter` user created, `/etc/greetd/config.toml` written pointing to phrog
 
-**Kernel hook (OTA-safe boot.img)**
+**Kernel Hook (OTA-safe boot.img)** *(logic credit: arkadin91)*
 - Installed `/etc/kernel/postinst.d/zz-qcom-bootimg` — rebuilds `boot.img` automatically after every `apt upgrade` that updates the kernel
 - Installed `/etc/initramfs/post-update.d/bootimg` — same trigger after `update-initramfs`
 - `/etc/kernel/cmdline` written by script 5 with real UUID so hook works correctly
 - `/etc/kernel/boot_dtb` written by script 5 so hook picks the correct panel DTB
-- Hook filters on `*sdm845*` kernel version to avoid accidentally using the generic Ubuntu kernel
+- Hook filters on `*sdm845*` kernel version to avoid accidentally grabbing the generic Ubuntu kernel
 
 **qbootctl**
 - Installed in rootfs — enables OTA-style slot updates without fastboot after first flash
 
-**Firmware investigation (reference image)**
+**Firmware Investigation (arkadin91 reference image)**
 - Reverse-engineered a working Ubuntu 26.04 ARM64 beryllium image (pre-first-boot)
 - Confirmed GPU, WiFi, BT worked before droid-juicer ran
 - Discovered `sdm845/beryllium/` blobs were manually staged — not tracked by dpkg
 - Confirmed `sdm845/a630_zap.mbn` ships in `linux-firmware` apt; beryllium-specific signed blobs do not
-- Confirmed OnePlus 6 firmware file list is identical to beryllium (different binaries, device-signed)
+- Confirmed OnePlus 6 firmware file list is structurally identical to beryllium (different binaries, device-signed)
+- Traced firmware source to `sdm845-mainline/firmware-xiaomi-beryllium` GitLab repo (pointed out by arkadin91 via Kupfer)
 
-**fstab**
-- Added `/boot/efi vfat` stub entry — empty FAT32 partition, required by Ubuntu desktop metapackage
+**fstab** *(later removed in RC10.1)*
+- Added `/boot/efi vfat` stub entry — matched reference image layout, later found to cause emergency mode without the actual partition present
 
 ---
 
-## RC7 (Session start)
-**Build system**
+## RC8
+**Build System**
 - 7-script pipeline inherited; deprecated scripts identified and removed; renumbering planned
 - `build.env` used to pass config between scripts
 - osm0sis mkbootimg fork confirmed required (Ubuntu package broken — GKI module error)
@@ -81,8 +115,37 @@
 - adsp/cdsp/mba/modem/venus/wlan via droid-juicer on first boot
 - Mobian repo added for droid-juicer, qrtr-tools, rmtfs, tqftpserv, pd-mapper
 
-**Bugs fixed during RC7**
+**Bugs Fixed**
 - `return 1` inside fetch functions killed script with `set -e` — fixed with explicit `return 0`
 - `basename: missing operand` — fixed with `for f in /boot/vmlinuz-*sdm845*` loop
 - binfmt not active on WSL2 — added manual hex registration fallback
 - `Exec format error` in chroot — fixed with `qemu-aarch64-static` explicit invocation
+
+---
+
+## RC10.2 / Pre-Release 1.0 🎉
+**Audio — PipeWire restored**
+- Reverted from PulseAudio back to PipeWire — confirmed working with proper UCM2 maps in place
+- RC10.1 used PulseAudio following postmarketOS recommendation, but PipeWire works correctly once UCM2 maps are present
+- `pipewire pipewire-pulse wireplumber` restored to base system install in script 3
+
+**UCM2 Maps**
+- `alsa-ucm-conf` now installed pinned to Ubuntu release (`apt-get install -t ${UBUNTU_RELEASE} alsa-ucm-conf`) — prevents Mobian repo from pulling a version ahead of Ubuntu
+- UCM2 maps harvested from arkadin91's reference image and bundled into `firmware.tar.gz`:
+  - `usr/share/alsa/ucm2/Xiaomi/beryllium/`
+  - `usr/share/alsa/ucm2/Qualcomm/sdm845/`
+  - `usr/share/alsa/ucm2/module/snd_soc_sdm845.conf`
+  - `usr/share/alsa/ucm2/codecs/qcom-lpass`
+  - `usr/share/alsa/ucm2/conf.d/sdm845`
+- Firmware archive re-applied post-apt so UCM maps always win over package manager
+
+**Hardware Status (Confirmed Working — Pre-Release 1.0)**
+- ✅ Touch
+- ✅ Sound (speaker + headphones via UCM2 + PipeWire)
+- ✅ WiFi
+- ✅ Bluetooth
+- ❌ Modem — disabled for now, causes WiFi and BT to crash when active
+
+**Modem**
+- Modem firmware present but modem stack intentionally not started
+- Will be revisited in a future RC once the WiFi/BT crash on modem init is investigated

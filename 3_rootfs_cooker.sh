@@ -159,7 +159,7 @@ apt-get install -y \
     initramfs-tools sudo \
     network-manager modemmanager \
     linux-firmware bluez \
-    pulseaudio pulseaudio-module-bluetooth \
+    pipewire pipewire-pulse wireplumber \
     openssh-server locales tzdata
 
 # ------- 5. Boot-method specific packages -------
