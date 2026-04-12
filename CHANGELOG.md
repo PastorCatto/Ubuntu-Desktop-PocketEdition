@@ -120,3 +120,32 @@
 - `basename: missing operand` — fixed with `for f in /boot/vmlinuz-*sdm845*` loop
 - binfmt not active on WSL2 — added manual hex registration fallback
 - `Exec format error` in chroot — fixed with `qemu-aarch64-static` explicit invocation
+
+---
+
+## RC10.2 / Pre-Release 1.0 🎉
+**Audio — PipeWire restored**
+- Reverted from PulseAudio back to PipeWire — confirmed working with proper UCM2 maps in place
+- RC10.1 used PulseAudio following postmarketOS recommendation, but PipeWire works correctly once UCM2 maps are present
+- `pipewire pipewire-pulse wireplumber` restored to base system install in script 3
+
+**UCM2 Maps**
+- `alsa-ucm-conf` now installed pinned to Ubuntu release (`apt-get install -t ${UBUNTU_RELEASE} alsa-ucm-conf`) — prevents Mobian repo from pulling a version ahead of Ubuntu
+- UCM2 maps harvested from arkadin91's reference image and bundled into `firmware.tar.gz`:
+  - `usr/share/alsa/ucm2/Xiaomi/beryllium/`
+  - `usr/share/alsa/ucm2/Qualcomm/sdm845/`
+  - `usr/share/alsa/ucm2/module/snd_soc_sdm845.conf`
+  - `usr/share/alsa/ucm2/codecs/qcom-lpass`
+  - `usr/share/alsa/ucm2/conf.d/sdm845`
+- Firmware archive re-applied post-apt so UCM maps always win over package manager
+
+**Hardware Status (Confirmed Working — Pre-Release 1.0)**
+- ✅ Touch
+- ✅ Sound (speaker + headphones via UCM2 + PipeWire)
+- ✅ WiFi
+- ✅ Bluetooth
+- ❌ Modem — disabled for now, causes WiFi and BT to crash when active
+
+**Modem**
+- Modem firmware present but modem stack intentionally not started
+- Will be revisited in a future RC once the WiFi/BT crash on modem init is investigated
