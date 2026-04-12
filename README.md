@@ -162,7 +162,7 @@ The rootfs UUID is stored in `/etc/kernel/cmdline` and the active DTB in `/etc/k
 
 ### Prerequisites
 
-- Ubuntu/Debian x86-64/ARM64 host (native or WSL2) — arm64 host added as of RC11!
+- Ubuntu/Debian x86-64/ARM64 host (native or WSL2, DO NOT USE 26.04 AS HOST!) — arm64 host added as of RC11! 
 - ~20GB free disk space
 - Internet access
 
