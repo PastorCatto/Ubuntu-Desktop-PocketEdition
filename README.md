@@ -119,8 +119,7 @@ Firmware is staged in three priority tiers:
 
 **Priority 1 — Local archive (fastest, most reliable):**
 Place a `firmware.tar.gz` in `firmware/<brand>-<codename>/` before building. Script 3 extracts it directly into the rootfs, then re-applies it after apt to ensure nothing gets overwritten.
-
-(Firmware is provided for Beryllium, hoping to source from upstream later on)
+(Firmware is provided, looking for anyone who can help to migrate this away from pre-packaged bundles)
 
 **Priority 2 — Git clone:**
 If no local archive is found, firmware is cloned from `gitlab.com/sdm845-mainline/firmware-xiaomi-beryllium`.
