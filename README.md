@@ -152,7 +152,7 @@ The rootfs UUID is stored in `/etc/kernel/cmdline` and the active DTB in `/etc/k
 | :--- | :--- | :--- |
 | 24.04 LTS | noble | ✅ Recommended |
 | 24.10 | oracular | ✅ Supported |
-| 25.04 | plucky | ✅ Supported, used for Pre-Release 1.0 |
+| 25.04 | plucky | ⚠️ Removed, End of Life (Used for Testing)  |
 | 26.04 dev | devel | ⚠️ Experimental — warning shown at build time |
 | 26.04 LTS | quill | 🔒 Disabled until release |
 
@@ -162,7 +162,7 @@ The rootfs UUID is stored in `/etc/kernel/cmdline` and the active DTB in `/etc/k
 
 ### Prerequisites
 
-- Ubuntu/Debian x86-64 host (native or WSL2) — arm64 host support planned for RC11
+- Ubuntu/Debian x86-64/ARM64 host (native or WSL2) — arm64 host added as of RC11!
 - ~20GB free disk space
 - Internet access
 
@@ -244,13 +244,13 @@ Check `/etc/kernel/postinst.d/zz-qcom-bootimg` is executable and `/etc/kernel/cm
 
 ---
 
-## Planned (RC11)
+## Planned (RC12)
 
-- ARM64 host support (skip QEMU, use direct chroot)
+
 - Watchdog script for build monitoring
 - Modem investigation (WiFi/BT crash on modem init)
 - phrog loading issue investigation
-- U-Boot and UEFI boot method implementation
+- U-Boot and UEFI boot method implementation (No UEFI, too much of a headache, port it at your own risk)
 - Ubuntu 26.04 quill stable when released
 
 ---
