@@ -217,7 +217,7 @@ Check `/etc/kernel/postinst.d/zz-qcom-bootimg` is executable and `/etc/kernel/cm
 
 Discord: **PastorCatto's The ISLAND** — [https://discord.gg/RZV2HveyBg](https://discord.gg/RZV2HveyBg)
 
-Special thanks to the Mobian and postmarketOS teams for SDM845 mainline kernel work, the sdm845-mainline group for the firmware repository, and samcday for Phrog.
+Special thanks to the Mobian and postmarketOS teams for SDM845 mainline kernel work, the sdm845-mainline group for the firmware repository, samcday for Phrog, and arkadin91 for the reference image and firmware discoveries that made Pre-Release 1.0 possible.
 
 ---
 
