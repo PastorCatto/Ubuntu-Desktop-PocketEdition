@@ -124,7 +124,7 @@ Place a `firmware.tar.gz` in `firmware/<brand>-<codename>/` before building. Scr
 **Priority 2 — Git clone:**
 If no local archive is found, firmware is cloned from `gitlab.com/sdm845-mainline/firmware-xiaomi-beryllium`.
 
-**Priority 3 — OnePlus 6 fallback:**
+**Priority 3 — OnePlus 6 fallback (Implemented for Beryllium):**
 If git clone fails, core blobs are copied from the host's `linux-firmware` apt package with a clear warning. GPU, WiFi and BT should work; modem is not guaranteed.
 
 **Adreno 630 GPU firmware** (`a630_sqe.fw`, `a630_gmu.bin`) is always fetched from kernel.org — not device-signed, freely distributable.
