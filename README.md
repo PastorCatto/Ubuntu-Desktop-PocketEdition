@@ -1,11 +1,11 @@
 # Mobuntu Orange
-**Document Version 4.0 — RC9 "The Device Config Update"**
+**Document Version 4.2 — Pre-Release 1.0 "The Sound Update"**
 
-> **Note:** This project was co-developed with an AI collaborator (Claude, Anthropic). The build scripts are intentionally readable and modular for long-term maintainability.
+> Co-developed with Claude (Anthropic) and arkadin91 (reference image, firmware discovery, OTA script logic). Build scripts are intentionally readable and modular for long-term maintainability.
 
 ---
 
-Mobuntu Orange is a toolkit that builds a full Ubuntu ARM64 image for SDM845-based phones and other supported devices. The end goal is to support the full range of devices Mobian targets, running a real Ubuntu release with a touch-first Phosh interface.
+Mobuntu Orange is a toolkit that builds a full Ubuntu ARM64 image for SDM845-based phones and other supported devices. The end goal is to support the full range of devices Mobian targets, running a real Ubuntu release with a touch-first mobile interface.
 
 No postmarketOS. No pmbootstrap. Everything is built from scratch inside a debootstrap chroot, then sealed and flashed via fastboot.
 
@@ -15,8 +15,8 @@ No postmarketOS. No pmbootstrap. Everything is built from scratch inside a deboo
 
 | Device | Codename | Firmware Method | Status |
 | :--- | :--- | :--- | :--- |
-| Xiaomi Poco F1 (Tianma) | beryllium | sdm845-mainline git repo | ✅ Primary target |
-| Xiaomi Poco F1 (EBBG) | beryllium | sdm845-mainline git repo | ✅ Primary target |
+| Xiaomi Poco F1 (Tianma) | beryllium | Local archive → git repo → OnePlus fallback | ✅ Confirmed working |
+| Xiaomi Poco F1 (EBBG) | beryllium | Local archive → git repo → OnePlus fallback | ✅ Confirmed working |
 | OnePlus 6 | enchilada | linux-firmware (apt) | 🧪 Untested |
 | OnePlus 6T | fajita | linux-firmware (apt) | 🧪 Untested |
 
@@ -24,17 +24,17 @@ Adding a new device requires only a `devices/<brand>-<codename>.conf` file — n
 
 ---
 
-## Hardware Status (Beryllium, RC9)
+## Hardware Status (Beryllium, Pre-Release 1.0)
 
 | Feature | Status | Notes |
 | :--- | :--- | :--- |
 | CPU | ✅ Working | Full performance, all cores |
 | GPU / Display | ✅ Working | Freedreno hardware acceleration |
-| Touch | ✅ Working | Native kernel support |
-| Wi-Fi | ✅ Working | ath10k via firmware bundle |
-| Bluetooth | ✅ Working | Confirmed on reference image |
-| Audio | ⚠️ Partial | ACDB calibration data included in firmware bundle |
-| Cellular / LTE | ⚠️ Testing | Modem firmware present, SIM PIN workaround needed |
+| Touch | ✅ Confirmed | Tested on device |
+| Wi-Fi | ✅ Confirmed | ath10k, tested on device |
+| Bluetooth | ✅ Confirmed | Tested on device |
+| Audio | ✅ Confirmed | PipeWire + UCM2 maps, speaker and headphones |
+| Cellular / LTE | ❌ Disabled | Crashes WiFi and BT when active — under investigation |
 | Sensors | 🧪 Partial | SLPI firmware included, iio-sensor-proxy required |
 | Camera | ❌ Not working | Out of scope for now |
 | NFC | ❌ No hardware | Not present on Poco F1 |
@@ -46,9 +46,9 @@ Adding a new device requires only a `devices/<brand>-<codename>.conf` file — n
 ### The Build Pipeline
 
 ```
-1_preflight.sh       — host deps, device selection, build.env config, optional auto-run
+1_preflight.sh       — host deps, device selection, UI picker, release picker, build.env, optional auto-run
 2_kernel_prep.sh     — fetch latest Mobian SDM845 kernel .deb from repo.mobian.org
-3_rootfs_cooker.sh   — debootstrap, firmware staging, chroot build (phosh, services, hooks)
+3_rootfs_cooker.sh   — debootstrap, firmware staging, chroot build (UI, services, kernel hooks)
 4_enter_chroot.sh    — debug utility, drops you into the rootfs interactively
 5_seal_rootfs.sh     — UUID, cmdline, fstab, boot.img, rootfs image, sparse convert
 ```
@@ -66,25 +66,77 @@ Every device-specific setting lives in `devices/<brand>-<codename>.conf`:
 
 Script 1 presents a menu of available device configs. Everything flows into `build.env` and all subsequent scripts read from there.
 
+### UI Picker
+
+Script 1 prompts for your preferred desktop environment:
+
+| Option | UI | Display Manager | Notes |
+| :--- | :--- | :--- | :--- |
+| 1 | Phosh | greetd + phrog | ⚠️ phrog has a known loading issue — use option 2-5 for now |
+| 2 | Ubuntu Desktop Minimal | GDM3 | Touch-friendly GNOME, recommended |
+| 3 | Unity | LightDM | |
+| 4 | Plasma Desktop | SDDM | Better for tablets |
+| 5 | Plasma Mobile | SDDM | Touch-first KDE |
+| 6 | Lomiri | greetd | Ubuntu Touch shell — experimental |
+
+> **Note:** Lomiri is experimental and may not function correctly on this device or Ubuntu release.
+
 ### Firmware Strategy
 
-**Beryllium (Poco F1):**
-Firmware is cloned from `gitlab.com/sdm845-mainline/firmware-xiaomi-beryllium`, maintained by the same team behind the Mobian SDM845 kernel. This includes all signed device blobs (adsp, cdsp, mba, modem, venus, slpi, wlanmdsp), the ath10k WiFi board file, TAS2559 audio DSP, ACDB audio calibration data, and sensor configs. The repo mirrors the filesystem layout exactly and is copied directly into the rootfs.
+Firmware is staged in three priority tiers:
 
-If the git clone fails, the build falls back to OnePlus 6 blobs from the host `linux-firmware` apt package with a clear warning. These are structurally identical but not officially signed for beryllium — GPU, WiFi and BT should work, modem is not guaranteed.
+**Priority 1 — Local archive (fastest, most reliable):**
+Place a `firmware.tar.gz` in `firmware/<brand>-<codename>/` before building. Script 3 extracts it directly into the rootfs, then re-applies it after apt to ensure nothing gets overwritten.
 
-**Adreno 630 GPU firmware** (`a630_sqe.fw`, `a630_gmu.bin`) is fetched separately from kernel.org as these are not device-signed and can be distributed freely.
+The archive for beryllium should include firmware blobs **and** UCM2 audio maps. To create it from a known-good image mounted at `/mnt/loop0p2`:
+```bash
+cd /mnt/loop0p2
+sudo tar -czf ~/firmware.tar.gz \
+    lib/firmware/qcom/sdm845/beryllium \
+    lib/firmware/ath10k/WCN3990 \
+    lib/firmware/tas2559_uCDSP.bin \
+    usr/share/alsa/ucm2/Xiaomi/beryllium \
+    usr/share/alsa/ucm2/Qualcomm/sdm845 \
+    usr/share/alsa/ucm2/module/snd_soc_sdm845.conf \
+    usr/share/alsa/ucm2/codecs/qcom-lpass \
+    usr/share/alsa/ucm2/conf.d/sdm845
+mv ~/firmware.tar.gz /path/to/mobuntu/firmware/xiaomi-beryllium/
+```
 
-**OnePlus 6 / 6T:** All required blobs ship in the upstream `linux-firmware` apt package, no additional steps needed.
+**Priority 2 — Git clone:**
+If no local archive is found, firmware is cloned from `gitlab.com/sdm845-mainline/firmware-xiaomi-beryllium`.
+
+**Priority 3 — OnePlus 6 fallback:**
+If git clone fails, core blobs are copied from the host's `linux-firmware` apt package with a clear warning. GPU, WiFi and BT should work; modem is not guaranteed.
+
+**Adreno 630 GPU firmware** (`a630_sqe.fw`, `a630_gmu.bin`) is always fetched from kernel.org — not device-signed, freely distributable.
+
+**OnePlus 6 / 6T:** All blobs ship in the upstream `linux-firmware` apt package.
+
+### Audio
+
+Audio works via PipeWire + ALSA UCM2 maps. `alsa-ucm-conf` is installed pinned to the Ubuntu release (`apt-get install -t ${UBUNTU_RELEASE} alsa-ucm-conf`) to prevent the Mobian repo from pulling an incompatible version ahead of Ubuntu. The firmware archive re-application after apt ensures the harvested UCM maps always win.
 
 ### OTA Boot Updates
 
-Starting RC8, `apt upgrade` automatically rebuilds `boot.img` after every kernel update via two hooks:
+`apt upgrade` automatically rebuilds `boot.img` after every kernel update via two hooks:
 
 - `/etc/kernel/postinst.d/zz-qcom-bootimg` — fires after `apt install linux-image-*`
 - `/etc/initramfs/post-update.d/bootimg` — fires after `update-initramfs`
 
-The kernel cmdline (including the rootfs UUID) is stored in `/etc/kernel/cmdline`. The active DTB is stored in `/etc/kernel/boot_dtb`. Both are written during script 5 and read by the hook on every subsequent update. `qbootctl` is installed to allow slot updates without a PC.
+The rootfs UUID is stored in `/etc/kernel/cmdline` and the active DTB in `/etc/kernel/boot_dtb`. Both written during script 5. `qbootctl` is installed for slot updates without a PC.
+
+---
+
+## Supported Ubuntu Releases
+
+| Release | Codename | Status |
+| :--- | :--- | :--- |
+| 24.04 LTS | noble | ✅ Recommended |
+| 24.10 | oracular | ✅ Supported |
+| 25.04 | plucky | ✅ Supported, used for Pre-Release 1.0 |
+| 26.04 dev | devel | ⚠️ Experimental — warning shown at build time |
+| 26.04 LTS | quill | 🔒 Disabled until release |
 
 ---
 
@@ -92,22 +144,22 @@ The kernel cmdline (including the rootfs UUID) is stored in `/etc/kernel/cmdline
 
 ### Prerequisites
 
-- Ubuntu/Debian host (native or WSL2)
+- Ubuntu/Debian x86-64 host (native or WSL2) — arm64 host support planned for RC11
 - ~20GB free disk space
 - Internet access
 
 ### Quick Start
 
 ```bash
-# Clone or copy the scripts and devices/ directory
+# Make scripts executable
 chmod +x *.sh
 
-# Run preflight — installs host deps, picks device, optionally auto-runs scripts 2 and 3
+# Run preflight — installs host deps, picks device, UI, release, optionally auto-runs 2 and 3
 ./1_preflight.sh
 
 # If you chose manual mode:
 ./2_kernel_prep.sh    # fetch kernel
-./3_rootfs_cooker.sh  # build rootfs (takes 20-40 min)
+./3_rootfs_cooker.sh  # build rootfs (20-40 min)
 
 # Seal and generate flash images
 ./5_seal_rootfs.sh
@@ -128,7 +180,7 @@ fastboot reboot
 
 > **Do not unplug during reboot** — the device is writing to NAND from RAM.
 
-No first-boot firmware step is required. All firmware is pre-staged during the build.
+No first-boot firmware step required when using a local firmware archive.
 
 ---
 
@@ -136,25 +188,52 @@ No first-boot firmware step is required. All firmware is pre-staged during the b
 
 1. Create `devices/<brand>-<codename>.conf` using an existing config as a template
 2. Set `FIRMWARE_METHOD`, `FIRMWARE_REPO`, `BOOT_DTB`, mkbootimg parameters, etc.
-3. Run `1_preflight.sh` — your device will appear in the menu automatically
+3. Optionally place a `firmware.tar.gz` in `firmware/<brand>-<codename>/`
+4. Run `1_preflight.sh` — your device will appear in the menu automatically
 
-For U-Boot or UEFI devices, set `BOOT_METHOD="uboot"` or `BOOT_METHOD="uefi"` and fill in the placeholder URL fields. Full implementation for these boot methods is planned for a future RC.
+For U-Boot or UEFI devices, set `BOOT_METHOD="uboot"` or `BOOT_METHOD="uefi"` and fill in the placeholder URL fields. Full implementation planned for a future RC.
 
 ---
 
 ## Troubleshooting
 
+**Emergency mode on boot:**
+Run `systemctl --failed` and `cat /etc/fstab`. If `/boot/efi` appears in fstab, remove it: `sudo sed -i '/boot\/efi/d' /etc/fstab`.
+
+**qcom_scm -22 error:**
+SCM is rejecting a firmware blob — usually `a630_zap.mbn`. Confirm the blob exists at `/lib/firmware/qcom/sdm845/beryllium/a630_zap.mbn`. If using the git repo, switch to a local firmware archive from a known-good image instead.
+
 **No WiFi interface:**
-Check `systemctl status tqftpserv` and `systemctl status rmtfs`. If either is failed, check that firmware blobs are present at `/lib/firmware/qcom/sdm845/beryllium/`.
+Check `systemctl status tqftpserv` and `systemctl status rmtfs`. Confirm blobs are present at `/lib/firmware/qcom/sdm845/beryllium/`.
+
+**No audio / dummy output:**
+Confirm UCM2 maps are present at `/usr/share/alsa/ucm2/Xiaomi/beryllium/`. If missing, rebuild with a firmware archive that includes the UCM maps (see Firmware Strategy above).
+
+**Modem crashes WiFi and BT:**
+Known issue as of Pre-Release 1.0. Do not start ofono or ModemManager on beryllium until this is resolved.
 
 **Random MAC address:**
-Expected behaviour — the driver cannot read the encrypted `persist` partition and assigns a random MAC for privacy.
+Expected — the driver cannot read the encrypted `persist` partition and assigns a random MAC for privacy.
 
 **Black screen on boot:**
-Usually a DTB mismatch. Confirm your panel variant (Tianma vs EBBG) and use the correct device config. You can check your panel from TWRP terminal: `cat /sys/class/graphics/fb0/modes`.
+Usually a DTB mismatch. Confirm your panel variant (Tianma vs EBBG) and use the correct device config. Check from TWRP: `cat /sys/class/graphics/fb0/modes`.
+
+**Phosh / phrog not loading:**
+Known issue. Use Ubuntu Desktop Minimal (option 2) or Plasma Mobile (option 5) in the UI picker for now.
 
 **Kernel hook not firing after apt upgrade:**
 Check `/etc/kernel/postinst.d/zz-qcom-bootimg` is executable and `/etc/kernel/cmdline` exists with a valid UUID.
+
+---
+
+## Planned (RC11)
+
+- ARM64 host support (skip QEMU, use direct chroot)
+- Watchdog script for build monitoring
+- Modem investigation (WiFi/BT crash on modem init)
+- phrog loading issue investigation
+- U-Boot and UEFI boot method implementation
+- Ubuntu 26.04 quill stable when released
 
 ---
 
@@ -162,7 +241,7 @@ Check `/etc/kernel/postinst.d/zz-qcom-bootimg` is executable and `/etc/kernel/cm
 
 Discord: **PastorCatto's The ISLAND** — [https://discord.gg/RZV2HveyBg](https://discord.gg/RZV2HveyBg)
 
-Special thanks to the Mobian and postmarketOS teams for SDM845 mainline kernel work, the sdm845-mainline group for the firmware repository, and samcday for Phrog.
+Special thanks to the Mobian and postmarketOS teams for SDM845 mainline kernel work, the sdm845-mainline group for the firmware repository, samcday for Phrog, and arkadin91 for the reference image and firmware discoveries that made Pre-Release 1.0 possible.
 
 ---
 
