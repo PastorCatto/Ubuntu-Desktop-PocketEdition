@@ -5,15 +5,38 @@ echo "   Mobuntu Orange — [1/5] Pre-Flight & Workspace Setup"
 echo "======================================================="
 
 # -------------------------------------------------------
-# Step 1: Host dependencies
+# Step 1: Host architecture detection
+# -------------------------------------------------------
+HOST_ARCH=$(uname -m)
+echo ">>> Host architecture: $HOST_ARCH"
+
+if [ "$HOST_ARCH" = "aarch64" ]; then
+    echo ">>> ARM64 host detected — QEMU not required."
+    HOST_IS_ARM64=true
+else
+    echo ">>> x86-64 host detected — QEMU required for arm64 chroot."
+    HOST_IS_ARM64=false
+fi
+
+# -------------------------------------------------------
+# Step 2: Host dependencies
 # -------------------------------------------------------
 echo ">>> Installing host dependencies..."
 sudo apt-get update
-sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
-    debootstrap qemu-user-static sudo e2fsprogs curl wget \
-    xz-utils gzip zip ca-certificates file git python3 \
-    binfmt-support uuid-runtime android-sdk-libsparse-utils \
-    rsync dosfstools
+
+if [ "$HOST_IS_ARM64" = "true" ]; then
+    # ARM64 host — no QEMU needed
+    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y         debootstrap sudo e2fsprogs curl wget         xz-utils gzip zip ca-certificates file git python3         uuid-runtime android-sdk-libsparse-utils rsync dosfstools
+else
+    # x86-64 host — QEMU required
+    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y         debootstrap qemu-user-static sudo e2fsprogs curl wget         xz-utils gzip zip ca-certificates file git python3         binfmt-support uuid-runtime android-sdk-libsparse-utils         rsync dosfstools
+fi
+
+# Ensure debootstrap knows about resolute (26.04)
+if [ ! -f /usr/share/debootstrap/scripts/resolute ]; then
+    echo ">>> Adding resolute suite to debootstrap..."
+    sudo ln -sf /usr/share/debootstrap/scripts/gutsy /usr/share/debootstrap/scripts/resolute
+fi
 
 echo ">>> Building mkbootimg from source (osm0sis fork)..."
 sudo apt-get remove -y mkbootimg 2>/dev/null || true
@@ -26,22 +49,29 @@ sudo chmod +x /usr/local/bin/mkbootimg
 rm -rf /tmp/mkbootimg-tool
 echo ">>> mkbootimg ready."
 
-echo ">>> Activating QEMU binfmt for arm64..."
-sudo systemctl restart systemd-binfmt 2>/dev/null || true
-sleep 1
+# -------------------------------------------------------
+# Step 3: QEMU binfmt setup (x86-64 hosts only)
+# -------------------------------------------------------
+if [ "$HOST_IS_ARM64" = "false" ]; then
+    echo ">>> Activating QEMU binfmt for arm64..."
+    sudo systemctl restart systemd-binfmt 2>/dev/null || true
+    sleep 1
 
-if ! grep -q "enabled" /proc/sys/fs/binfmt_misc/qemu-aarch64 2>/dev/null; then
-    sudo mount binfmt_misc -t binfmt_misc /proc/sys/fs/binfmt_misc 2>/dev/null || true
-    sudo sh -c 'echo ":qemu-aarch64:M::\x7fELF\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\xb7\x00:\xff\xff\xff\xff\xff\xff\xff\x00\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff\xff:/usr/bin/qemu-aarch64-static:F" > /proc/sys/fs/binfmt_misc/register' 2>/dev/null || true
-fi
-if ! grep -q "enabled" /proc/sys/fs/binfmt_misc/qemu-aarch64 2>/dev/null; then
-    echo ">>> ERROR: binfmt handler still not active."
-    exit 1
-fi
-echo ">>> binfmt confirmed active."
+    if ! grep -q "enabled" /proc/sys/fs/binfmt_misc/qemu-aarch64 2>/dev/null; then
+        sudo mount binfmt_misc -t binfmt_misc /proc/sys/fs/binfmt_misc 2>/dev/null || true
+        printf ':qemu-aarch64:M::\x7fELF\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\xb7\x00:\xff\xff\xff\xff\xff\xff\xff\x00\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff\xff:/usr/bin/qemu-aarch64-static:F' | sudo tee /proc/sys/fs/binfmt_misc/register 2>/dev/null || true
+    fi
+    if ! grep -q "enabled" /proc/sys/fs/binfmt_misc/qemu-aarch64 2>/dev/null; then
+        echo ">>> ERROR: binfmt handler still not active."
+        exit 1
+    fi
+    echo ">>> binfmt confirmed active."
 
-if [ ! -f /usr/bin/qemu-aarch64-static ]; then
-    sudo apt-get install --reinstall qemu-user-static
+    if [ ! -f /usr/bin/qemu-aarch64-static ]; then
+        sudo apt-get install --reinstall qemu-user-static
+    fi
+else
+    echo ">>> Skipping QEMU setup (not needed on arm64 host)."
 fi
 
 # -------------------------------------------------------
@@ -99,36 +129,30 @@ PASSWORD=${PASSWORD:-1234}
 
 echo ""
 echo "Ubuntu release:"
-echo "1) noble    (24.04 LTS, recommended)"
+echo "1) noble    (24.04 LTS)"
 echo "2) oracular (24.10)"
-echo "3) plucky   (25.04)"
-echo "4) devel    (26.04 development, experimental)"
-echo "5) quill    (26.04 stable — NOT YET RELEASED, disabled)"
-read -p "Choice [1-4, default 1]: " REL_CHOICE
-REL_CHOICE=${REL_CHOICE:-1}
+echo "3) resolute (26.04 beta, recommended — 25.04 is EOL)"
+echo "4) quill    (26.04 stable — NOT YET RELEASED, disabled)"
+read -p "Choice [1-4, default 3]: " REL_CHOICE
+REL_CHOICE=${REL_CHOICE:-3}
 case $REL_CHOICE in
+    1) UBUNTU_RELEASE="noble"    ;;
     2) UBUNTU_RELEASE="oracular" ;;
-    3) UBUNTU_RELEASE="plucky"   ;;
-    4)
-        UBUNTU_RELEASE="devel"
+    3)
+        UBUNTU_RELEASE="resolute"
         echo ""
         echo "======================================================="
-        echo "  WARNING: Ubuntu 26.04 devel is pre-release."
-        echo "  Packages may be broken, missing or change without"
-        echo "  notice. Use only for testing purposes."
+        echo "  NOTE: Ubuntu 26.04 (resolute/beta) is the recommended"
+        echo "  choice. Packages may occasionally change without"
+        echo "  notice as the release approaches."
         echo "======================================================="
-        read -p "Continue with devel? [y/N]: " DEVEL_CONFIRM
-        if [[ ! "$DEVEL_CONFIRM" =~ ^[Yy]$ ]]; then
-            echo ">>> Falling back to noble."
-            UBUNTU_RELEASE="noble"
-        fi
         ;;
-    5)
-        echo ">>> Ubuntu 26.04 stable (quill) is not yet released."
-        echo ">>> Falling back to noble."
-        UBUNTU_RELEASE="noble"
+    4)
+        echo ">>> Ubuntu 26.04 stable (resolute) is not yet released."
+        echo ">>> Falling back to resolute beta."
+        UBUNTU_RELEASE="resolute"
         ;;
-    *) UBUNTU_RELEASE="noble" ;;
+    *) UBUNTU_RELEASE="resolute" ;;
 esac
 
 echo ""
@@ -216,6 +240,8 @@ cat > build.env << EOF
 # Mobuntu Orange — build configuration
 # Generated by 1_preflight.sh
 
+HOST_ARCH="${HOST_ARCH}"
+HOST_IS_ARM64="${HOST_IS_ARM64}"
 USERNAME="${USERNAME}"
 PASSWORD="${PASSWORD}"
 UBUNTU_RELEASE="${UBUNTU_RELEASE}"
