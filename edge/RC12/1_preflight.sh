@@ -29,7 +29,7 @@ if [ "$HOST_IS_ARM64" = "true" ]; then
     sudo DEBIAN_FRONTEND=noninteractive apt-get install -y         debootstrap sudo e2fsprogs curl wget make gcc        xz-utils gzip zip ca-certificates file git python3         uuid-runtime android-sdk-libsparse-utils rsync dosfstools
 else
     # x86-64 host — QEMU required
-    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y         debootstrap qemu-user-static sudo e2fsprogs curl wget make gcc         xz-utils gzip zip ca-certificates file git python3         binfmt-support uuid-runtime android-sdk-libsparse-utils         rsync dosfstools
+    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y         debootstrap qemu-user-binfmt-hwe sudo e2fsprogs curl wget make gcc         xz-utils gzip zip ca-certificates file git python3         uuid-runtime android-sdk-libsparse-utils         rsync dosfstools
 fi
 
 # Ensure debootstrap knows about resolute (26.04)
@@ -68,7 +68,7 @@ if [ "$HOST_IS_ARM64" = "false" ]; then
     echo ">>> binfmt confirmed active."
 
     if [ ! -f /usr/bin/qemu-aarch64-static ]; then
-        sudo apt-get install --reinstall qemu-user-static
+        sudo apt-get install --reinstall qemu-user-binfmt-hwe
     fi
 else
     echo ">>> Skipping QEMU setup (not needed on arm64 host)."

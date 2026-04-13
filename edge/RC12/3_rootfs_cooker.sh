@@ -22,8 +22,8 @@ if [ ! -d "$ROOTFS_DIR" ]; then
         # x86-64 host — foreign debootstrap + QEMU second stage
         echo ">>> x86-64 host: running foreign debootstrap with QEMU..."
         sudo debootstrap --arch=arm64 --foreign "$UBUNTU_RELEASE" "$ROOTFS_DIR" http://ports.ubuntu.com/
-        sudo cp /usr/bin/qemu-aarch64-static "$ROOTFS_DIR/usr/bin/"
-        sudo chroot "$ROOTFS_DIR" /usr/bin/qemu-aarch64-static /bin/bash /debootstrap/debootstrap --second-stage
+        sudo cp /usr/bin/qemu-aarch64 "$ROOTFS_DIR/usr/bin/"
+        sudo chroot "$ROOTFS_DIR" /usr/bin/qemu-aarch64 /bin/bash /debootstrap/debootstrap --second-stage
         if [ $? -ne 0 ]; then
             echo ">>> ERROR: Second stage failed."
             sudo rm -rf "$ROOTFS_DIR"; exit 1
@@ -399,8 +399,8 @@ if [ "$HOST_IS_ARM64" = "true" ]; then
     sudo chroot "$ROOTFS_DIR" /bin/bash /tmp/chroot_setup.sh
 else
     # x86-64 host — use QEMU static binary
-    sudo cp /usr/bin/qemu-aarch64-static "$ROOTFS_DIR/usr/bin/"
-    sudo chroot "$ROOTFS_DIR" /usr/bin/qemu-aarch64-static /bin/bash /tmp/chroot_setup.sh
+    sudo cp /usr/bin/qemu-aarch64 "$ROOTFS_DIR/usr/bin/"
+    sudo chroot "$ROOTFS_DIR" /usr/bin/qemu-aarch64 /bin/bash /tmp/chroot_setup.sh
 fi
 
 # -------------------------------------------------------
