@@ -22,8 +22,8 @@ if [ ! -d "$ROOTFS_DIR" ]; then
         # x86-64 host — foreign debootstrap + QEMU second stage
         echo ">>> x86-64 host: running foreign debootstrap with QEMU..."
         sudo debootstrap --arch=arm64 --foreign "$UBUNTU_RELEASE" "$ROOTFS_DIR" http://ports.ubuntu.com/
-        sudo cp /usr/bin/qemu-aarch64-static "$ROOTFS_DIR/usr/bin/"
-        sudo chroot "$ROOTFS_DIR" /usr/bin/qemu-aarch64-static /bin/bash /debootstrap/debootstrap --second-stage
+        sudo cp /usr/bin/qemu-aarch64 "$ROOTFS_DIR/usr/bin/"
+        sudo chroot "$ROOTFS_DIR" /usr/bin/qemu-aarch64 /bin/bash /debootstrap/debootstrap --second-stage
         if [ $? -ne 0 ]; then
             echo ">>> ERROR: Second stage failed."
             sudo rm -rf "$ROOTFS_DIR"; exit 1
@@ -237,6 +237,7 @@ apt-get install -y \
     network-manager modemmanager \
     linux-firmware bluez \
     pipewire pipewire-pulse wireplumber \
+    hexagonrpcd \
     openssh-server locales tzdata
 
 # ------- 5. Boot-method specific packages -------
@@ -344,6 +345,41 @@ if [ "$FIRMWARE_METHOD" != "git" ]; then
 fi
 
 # ------- 12. Device services -------
+echo ">>> Setting up Qualcomm service startup ordering..."
+
+# Ensure rmtfs and pd-mapper start before hexagonrpcd
+mkdir -p /etc/systemd/system/hexagonrpcd.service.d
+cat > /etc/systemd/system/hexagonrpcd.service.d/ordering.conf << 'EOF'
+[Unit]
+After=rmtfs.service pd-mapper.service qrtr-ns.service
+Requires=rmtfs.service pd-mapper.service qrtr-ns.service
+EOF
+
+# Ensure pd-mapper starts after qrtr-ns
+mkdir -p /etc/systemd/system/pd-mapper.service.d
+cat > /etc/systemd/system/pd-mapper.service.d/ordering.conf << 'EOF'
+[Unit]
+After=qrtr-ns.service
+Requires=qrtr-ns.service
+EOF
+
+# Ensure rmtfs starts after qrtr-ns
+mkdir -p /etc/systemd/system/rmtfs.service.d
+cat > /etc/systemd/system/rmtfs.service.d/ordering.conf << 'EOF'
+[Unit]
+After=qrtr-ns.service
+Requires=qrtr-ns.service
+EOF
+
+echo ">>> Enabling Qualcomm services in order..."
+systemctl enable qrtr-ns 2>/dev/null || true
+systemctl enable rmtfs 2>/dev/null || true
+systemctl enable pd-mapper 2>/dev/null || true
+systemctl enable tqftpserv 2>/dev/null || true
+systemctl enable hexagonrpcd 2>/dev/null || true
+
+systemctl daemon-reload 2>/dev/null || true
+
 if [ -n "$DEVICE_SERVICES" ]; then
     echo ">>> Enabling device services: $DEVICE_SERVICES"
     for svc in $DEVICE_SERVICES; do
@@ -395,8 +431,8 @@ if [ "$HOST_IS_ARM64" = "true" ]; then
     sudo chroot "$ROOTFS_DIR" /bin/bash /tmp/chroot_setup.sh
 else
     # x86-64 host — use QEMU static binary
-    sudo cp /usr/bin/qemu-aarch64-static "$ROOTFS_DIR/usr/bin/"
-    sudo chroot "$ROOTFS_DIR" /usr/bin/qemu-aarch64-static /bin/bash /tmp/chroot_setup.sh
+    sudo cp /usr/bin/qemu-aarch64 "$ROOTFS_DIR/usr/bin/"
+    sudo chroot "$ROOTFS_DIR" /usr/bin/qemu-aarch64 /bin/bash /tmp/chroot_setup.sh
 fi
 
 # -------------------------------------------------------

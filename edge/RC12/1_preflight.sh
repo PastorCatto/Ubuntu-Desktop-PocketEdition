@@ -129,8 +129,8 @@ PASSWORD=${PASSWORD:-1234}
 
 echo ""
 echo "Ubuntu release:"
-echo "1) noble    (24.04 LTS)"
-echo "2) oracular (24.10)"
+echo "1) noble    (24.04 LTS Not Supported: hexagonrpcd missing)"
+echo "2) oracular (24.10 Not Supported: hexagonrpcd missing)"
 echo "3) resolute (26.04 beta, recommended — 25.04 is EOL)"
 echo "4) quill    (26.04 stable — NOT YET RELEASED, disabled)"
 read -p "Choice [1-4, default 3]: " REL_CHOICE

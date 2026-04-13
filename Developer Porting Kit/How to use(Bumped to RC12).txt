@@ -2,6 +2,13 @@ Run the scripts in this order
 
 THIS IS THE LAYOUT THE SCRIPTS NEED TO BE!
 
+As of RC12, we no longer support using Ubuntu 24.04 as a host due to changes to QEMU and Ubuntu layouts) 
+
+!!!refer to RC11 (drop scripts in place here) and add 'hexagonrpcd' as one of the extra packages when asked in #1_preflight.sh
+
+
+
+
 Run #1 to setup ubuntu version, desktop UI, username, password, and any needed packages (only needs to be done once, unless you want to change something)
 
 Run #2 to pull kernel (if you put the kernel in the kernel_payload, and its ready, we just prep it in this stage)

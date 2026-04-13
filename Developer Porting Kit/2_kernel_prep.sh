@@ -12,9 +12,6 @@ cd kernel_payload
 
 # -------------------------------------------------------
 # Check for existing kernel payload — skip download if present
-# Accepts either:
-#   linux-image.deb / linux-headers.deb (renamed)
-#   exact filenames e.g. linux-image-6.18-sdm845_6.18.20-1_arm64.deb
 # -------------------------------------------------------
 IMG_EXISTING=$(ls linux-image*.deb 2>/dev/null | head -n 1)
 HDR_EXISTING=$(ls linux-headers*.deb 2>/dev/null | head -n 1)
@@ -36,18 +33,17 @@ mobian)
 
     if [ -n "$KERNEL_VERSION_PIN" ]; then
         # --- Pinned version mode ---
-        # Filename format: linux-image-6.18-sdm845_6.18.20-1_arm64.deb
         echo ">>> Pinned kernel version: $KERNEL_VERSION_PIN"
         KERNEL_MAJOR_MINOR=$(echo "$KERNEL_VERSION_PIN" | grep -oE "^[0-9]+\.[0-9]+")
         SUBDIR_URL="${POOL_URL}linux-${KERNEL_MAJOR_MINOR}-${KERNEL_SERIES}/"
 
         echo ">>> Fetching package index from $SUBDIR_URL ..."
-        if ! curl -s -f -L -A "Mozilla/5.0" -o pkg_index.html "$SUBDIR_URL"; then
+        wget -q --timeout=30 -U "Mozilla/5.0" -O pkg_index.html "$SUBDIR_URL" || true
+        if [ ! -s pkg_index.html ]; then
             echo ">>> ERROR: Cannot fetch $SUBDIR_URL"
             exit 1
         fi
 
-        # Match version in package version field: _6.18.20-
         IMG_FILE=$(grep -oE "linux-image-[^_]+_${KERNEL_VERSION_PIN}-[^_]+_arm64\.deb" pkg_index.html | head -n 1)
         HDR_FILE=$(grep -oE "linux-headers-[^_]+_${KERNEL_VERSION_PIN}-[^_]+_arm64\.deb" pkg_index.html | head -n 1)
 
@@ -58,25 +54,55 @@ mobian)
             rm -f pkg_index.html
             exit 1
         fi
+
     else
         # --- Latest version mode ---
         echo ">>> Fetching Mobian repository index..."
-        if ! curl -s -f -L -A "Mozilla/5.0" -o pool_index.html "$POOL_URL"; then
+        wget -q --timeout=30 -U "Mozilla/5.0" -O pool_index.html "$POOL_URL" || true
+        if [ ! -s pool_index.html ]; then
             echo ">>> ERROR: Cannot connect to $POOL_URL"
             exit 1
         fi
 
-        LATEST_SUBDIR=$(grep -oE "linux-[0-9]+\.[0-9]+-${KERNEL_SERIES}/" pool_index.html | sort -V | tail -n 1)
+        echo ""
+        echo "Available kernel series (pin one by setting KERNEL_VERSION_PIN in your device config):"
+        mapfile -t SERIES_LIST < <(grep -oE "linux-[0-9]+\.[0-9]+-${KERNEL_SERIES}/" pool_index.html | sort -V -u | \
+            sed "s/linux-//;s/-${KERNEL_SERIES}\///" )
+
+        for i in "${!SERIES_LIST[@]}"; do
+            TAG=""
+            [ $i -eq $((${#SERIES_LIST[@]}-1)) ] && TAG=" (latest)"
+            echo "  $((i+1))) ${SERIES_LIST[$i]}$TAG  ->  KERNEL_VERSION_PIN=\"${SERIES_LIST[$i]}.x\""
+        done
+        echo ""
+
+        DEFAULT_IDX=${#SERIES_LIST[@]}
+        read -p "Select kernel [1-${#SERIES_LIST[@]}, default $DEFAULT_IDX (latest)]: " KERNEL_CHOICE
+        KERNEL_CHOICE=${KERNEL_CHOICE:-$DEFAULT_IDX}
+        SELECTED_SERIES="linux-${SERIES_LIST[$((KERNEL_CHOICE-1))]}-${KERNEL_SERIES}/"
+
+        if [ -z "$SELECTED_SERIES" ]; then
+            echo ">>> ERROR: Invalid selection."
+            exit 1
+        fi
+        echo ">>> Selected: $SELECTED_SERIES"
+
+        LATEST_SUBDIR="$SELECTED_SERIES"
+        rm -f pool_index.html
+
         if [ -z "$LATEST_SUBDIR" ]; then
             echo ">>> ERROR: No ${KERNEL_SERIES} kernel found in pool index."
             exit 1
         fi
-        echo ">>> Latest kernel series: $LATEST_SUBDIR"
+
+        echo ">>> Using latest: $LATEST_SUBDIR"
         SUBDIR_URL="${POOL_URL}${LATEST_SUBDIR}"
 
-        curl -s -f -L -A "Mozilla/5.0" -o pkg_index.html "$SUBDIR_URL" || {
-            echo ">>> ERROR: Cannot fetch $SUBDIR_URL"; exit 1
-        }
+        wget -q --timeout=30 -U "Mozilla/5.0" -O pkg_index.html "$SUBDIR_URL" || true
+        if [ ! -s pkg_index.html ]; then
+            echo ">>> ERROR: Cannot fetch $SUBDIR_URL"
+            exit 1
+        fi
 
         IMG_FILE=$(grep -oE "linux-image-[0-9a-zA-Z\.\-]+-${KERNEL_SERIES}_[^\"]+_arm64\.deb" pkg_index.html | sort -V | tail -n 1)
         HDR_FILE=$(grep -oE "linux-headers-[0-9a-zA-Z\.\-]+-${KERNEL_SERIES}_[^\"]+_arm64\.deb" pkg_index.html | sort -V | tail -n 1)
@@ -85,7 +111,6 @@ mobian)
             echo ">>> ERROR: Could not parse kernel .deb files."
             exit 1
         fi
-        rm -f pool_index.html
     fi
 
     echo ">>> Kernel image:   $IMG_FILE"

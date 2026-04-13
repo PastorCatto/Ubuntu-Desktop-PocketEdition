@@ -345,8 +345,40 @@ if [ "$FIRMWARE_METHOD" != "git" ]; then
 fi
 
 # ------- 12. Device services -------
-echo ">>> Enabling hexagonrpcd (required for ADSP/audio)..."
+echo ">>> Setting up Qualcomm service startup ordering..."
+
+# Ensure rmtfs and pd-mapper start before hexagonrpcd
+mkdir -p /etc/systemd/system/hexagonrpcd.service.d
+cat > /etc/systemd/system/hexagonrpcd.service.d/ordering.conf << 'EOF'
+[Unit]
+After=rmtfs.service pd-mapper.service qrtr-ns.service
+Requires=rmtfs.service pd-mapper.service qrtr-ns.service
+EOF
+
+# Ensure pd-mapper starts after qrtr-ns
+mkdir -p /etc/systemd/system/pd-mapper.service.d
+cat > /etc/systemd/system/pd-mapper.service.d/ordering.conf << 'EOF'
+[Unit]
+After=qrtr-ns.service
+Requires=qrtr-ns.service
+EOF
+
+# Ensure rmtfs starts after qrtr-ns
+mkdir -p /etc/systemd/system/rmtfs.service.d
+cat > /etc/systemd/system/rmtfs.service.d/ordering.conf << 'EOF'
+[Unit]
+After=qrtr-ns.service
+Requires=qrtr-ns.service
+EOF
+
+echo ">>> Enabling Qualcomm services in order..."
+systemctl enable qrtr-ns 2>/dev/null || true
+systemctl enable rmtfs 2>/dev/null || true
+systemctl enable pd-mapper 2>/dev/null || true
+systemctl enable tqftpserv 2>/dev/null || true
 systemctl enable hexagonrpcd 2>/dev/null || true
+
+systemctl daemon-reload 2>/dev/null || true
 
 if [ -n "$DEVICE_SERVICES" ]; then
     echo ">>> Enabling device services: $DEVICE_SERVICES"
