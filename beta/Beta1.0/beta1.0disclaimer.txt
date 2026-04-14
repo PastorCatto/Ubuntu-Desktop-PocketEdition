@@ -1,0 +1,16 @@
+Beta1.0
+
+This release is aimed at Ubuntu 26.04 
+We will stay in a beta until Ubuntu and Canonical release 26.04 offically
+
+Host requirements
+
+Ubuntu 26.04 (or 25.10) 
+
+internet
+
+25 GB of free space (~5GB for rootfs ~5GB for Fastboot image, and 12GB or whatever specified)
+
+Free time
+
+will add documentation, just follow the script instructions!

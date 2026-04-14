@@ -237,7 +237,6 @@ apt-get install -y \
     network-manager modemmanager \
     linux-firmware bluez \
     pipewire pipewire-pulse wireplumber \
-    hexagonrpcd \
     openssh-server locales tzdata
 
 # ------- 5. Boot-method specific packages -------
@@ -261,10 +260,10 @@ update-initramfs -c -k all
 echo ">>> Installing UI: $UI_NAME (DM: $UI_DM)"
 case "$UI_NAME" in
 phosh)
-    apt-get install -y -t staging phosh phosh-osk-stub greetd phrog
+    apt-get install -y phosh squeekboard greetd
     useradd -r -m -G video greeter 2>/dev/null || true
     mkdir -p /etc/greetd
-    printf "[terminal]\nvt = 1\n\n[default_session]\ncommand = \"phrog\"\nuser = \"greeter\"\n" > /etc/greetd/config.toml
+    printf "[terminal]\nvt = 1\n\n[default_session]\ncommand = \"phosh\"\nuser = \"greeter\"\n" > /etc/greetd/config.toml
     systemctl enable greetd
     ;;
 ubuntu-desktop-minimal)
@@ -285,7 +284,7 @@ plasma-mobile)
     ;;
 lomiri)
     echo ">>> Installing Lomiri..."
-    apt-get install -y -t "$UBUNTU_RELEASE" lomiri lomiri-osk-stub greetd
+    apt-get install -y -t "$UBUNTU_RELEASE" lomiri squeekboard greetd
     useradd -r -m -G video greeter 2>/dev/null || true
     mkdir -p /etc/greetd
     printf "[terminal]\nvt = 1\n\n[default_session]\ncommand = \"lomiri\"\nuser = \"greeter\"\n" > /etc/greetd/config.toml
@@ -293,10 +292,10 @@ lomiri)
     ;;
 *)
     echo ">>> WARNING: Unknown UI, falling back to phosh."
-    apt-get install -y -t staging phosh phosh-osk-stub greetd phrog
+    apt-get install -y phosh squeekboard greetd
     useradd -r -m -G video greeter 2>/dev/null || true
     mkdir -p /etc/greetd
-    printf "[terminal]\nvt = 1\n\n[default_session]\ncommand = \"phrog\"\nuser = \"greeter\"\n" > /etc/greetd/config.toml
+    printf "[terminal]\nvt = 1\n\n[default_session]\ncommand = \"phosh\"\nuser = \"greeter\"\n" > /etc/greetd/config.toml
     systemctl enable greetd
     ;;
 esac
@@ -346,39 +345,43 @@ fi
 
 # ------- 12. Device services -------
 echo ">>> Setting up Qualcomm service startup ordering..."
-
-# Ensure rmtfs and pd-mapper start before hexagonrpcd
-mkdir -p /etc/systemd/system/hexagonrpcd.service.d
-cat > /etc/systemd/system/hexagonrpcd.service.d/ordering.conf << 'EOF'
-[Unit]
-After=rmtfs.service pd-mapper.service qrtr-ns.service
-Requires=rmtfs.service pd-mapper.service qrtr-ns.service
-EOF
-
-# Ensure pd-mapper starts after qrtr-ns
 mkdir -p /etc/systemd/system/pd-mapper.service.d
-cat > /etc/systemd/system/pd-mapper.service.d/ordering.conf << 'EOF'
-[Unit]
-After=qrtr-ns.service
-Requires=qrtr-ns.service
-EOF
-
-# Ensure rmtfs starts after qrtr-ns
+printf '[Unit]\nAfter=qrtr-ns.service\nRequires=qrtr-ns.service\n' > /etc/systemd/system/pd-mapper.service.d/ordering.conf
 mkdir -p /etc/systemd/system/rmtfs.service.d
-cat > /etc/systemd/system/rmtfs.service.d/ordering.conf << 'EOF'
-[Unit]
-After=qrtr-ns.service
-Requires=qrtr-ns.service
-EOF
+printf '[Unit]\nAfter=qrtr-ns.service\nRequires=qrtr-ns.service\n' > /etc/systemd/system/rmtfs.service.d/ordering.conf
 
 echo ">>> Enabling Qualcomm services in order..."
 systemctl enable qrtr-ns 2>/dev/null || true
 systemctl enable rmtfs 2>/dev/null || true
 systemctl enable pd-mapper 2>/dev/null || true
 systemctl enable tqftpserv 2>/dev/null || true
-systemctl enable hexagonrpcd 2>/dev/null || true
-
 systemctl daemon-reload 2>/dev/null || true
+
+echo ">>> Writing WirePlumber ALSA tuning config (SDM845)..."
+mkdir -p /usr/share/wireplumber/wireplumber.conf.d
+cat > /usr/share/wireplumber/wireplumber.conf.d/51-qcom.conf << 'WPEOF'
+monitor.alsa.rules = [
+  {
+    matches = [
+      {
+        node.name = "~alsa_input.*"
+      },
+      {
+        node.name = "~alsa_output.*"
+      }
+    ]
+    actions = {
+      update-props = {
+        audio.format           = "S16LE"
+        audio.rate             = 48000
+        api.alsa.period-size   = 4096
+        api.alsa.period-num    = 6
+        api.alsa.headroom      = 512
+      }
+    }
+  }
+]
+WPEOF
 
 if [ -n "$DEVICE_SERVICES" ]; then
     echo ">>> Enabling device services: $DEVICE_SERVICES"
