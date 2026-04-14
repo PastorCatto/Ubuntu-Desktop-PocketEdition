@@ -1,5 +1,5 @@
-# Mobuntu Orange
-**Document Version 4.3a — Pre-Release 1.0 "New Beginnings"**
+# Mobuntu (Now Color Coded!)
+**Document Version 4.4a — Pre-Release 1.0 "The Color/Colour Update!"**
 
 > Co-developed with Claude (Anthropic) and arkadin91 (reference image, firmware discovery, OTA script logic). Build scripts are intentionally readable and modular for long-term maintainability.
 
