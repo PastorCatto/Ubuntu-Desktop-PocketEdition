@@ -1,5 +1,5 @@
 Drop the Kernel here 
-name it either linux-image and linux-headers or pull directly and leave the name intact and place it here 
+name it either linux-image and linux-headers or run 2_kernel_prep.sh and pick one, (if you need to pin a certian version, use the device config file) 
 
 IF YOU PIN A KERNEL VERSION AND DROP A DIFFERENT ONE HERE, REMOVE THE PIN IN THE DEVICES/Phone-model/phone-model.conf FILE!
 (or name it linux-image, youll need both the kernel and the headers, we check the name for the version number)
