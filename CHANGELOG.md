@@ -100,17 +100,18 @@
 - Includes: `firmware.tar.gz`, `qcom-firmware`, `51-qcom.conf`, `hexagonrpcd.confd`, `q6voiced.conf`, `81-libssc.rules`
 - Script 3 looks in firmware folder first, falls back to curl from upstream sources
 
-**Noble (24.04) Support Restored**
-- `hexagonrpcd` removed as blocker — 24.04 now viable again with correct WirePlumber tuning
-- Noble requires the extended firmware bundle with UCM configs bundled
-- Warning added in script 1 when noble is selected
+**Noble (24.04) Support Briefly Restored — Reverted**
+- `hexagonrpcd` removal briefly made 24.04 viable again
+- Noble support restored with extended firmware bundle requirement and warning in script 1
+- Subsequently confirmed that `hexagonrpcd` is required for reliable audio — noble support reverted
+- Noble (24.04) will be formally sunset in RC14 as `hexagonrpcd` 0.4.0 is not available in noble repos
 
 **Version Markers**
 - RC version added to header comments across all scripts
 
 ---
 
-## RC12 / Pre-Release 1.0
+## RC12 / Pre-Release 1.1
 
 **Audio Investigation**
 - Ran diagnostic script against arkadin91's reference image (Ubuntu 26.04, April 9 build)
