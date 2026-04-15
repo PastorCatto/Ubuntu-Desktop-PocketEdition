@@ -71,11 +71,11 @@
 - Creates `/etc/mobuntu-resize-pending` flag, deleted after successful resize
 - Device reboots automatically after resize completes
 
-**Watchdog / Auto Build**
+**Watchdog / Auto Build (Currently Half-implemented)**
 - `watchdog.sh` added — runs scripts 2 -> 3 -> verify -> 5 unattended
 - Hidden ZWJ (U+200D) signal character appended to success messages in scripts 2, 3, and verifier
 - Watchdog detects signal to confirm clean exit at each stage
-- Auto-sudo toggle with explicit risk warning — recommended for WSL2/VM use only
+- Auto-sudo toggle with explicit risk warning — recommended for WSL2/VM use only (Auto sudo is broken, maybe for good reason)
 - Output images tagged with `_autobuild` suffix on success
 - Timestamped log written per run
 
@@ -85,7 +85,7 @@
 - Package checks use direct dpkg status file reads — no chroot required, works from x86 host
 - Hidden ZWJ signal on pass for watchdog integration
 
-**Developer Masterkit**
+**Developer Masterkit (New!)**
 - `mobuntu-developer-masterkit.py` added — Python curses TUI
 - Regedit-style split layout: left pane file tree, right pane content/menu
 - Sections: Device Config, APT, Kernel, Services, Audio, Verifier Generator, Staged Changes
