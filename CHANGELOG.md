@@ -1,6 +1,6 @@
 # Mobuntu — Changelog
 
-> RC7–RC10.1 assisted by Claude Sonnet 4.6 (Anthropic)
+> RC7–RC13 assisted by Claude Sonnet 4.6 (Anthropic)
 > Substantial progress and direction thanks to **arkadin91** — Ubuntu 26.04 Beta reference image, Kupfer lead, sdm845-mainline firmware discovery, OTA script logic, WirePlumber tuning config, and pmaports device file discovery.
 
 ---
