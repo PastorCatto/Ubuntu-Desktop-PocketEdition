@@ -1,7 +1,7 @@
 # Mobuntu (Now Color Coded!)
 **Document Version 4.4a — Pre-Release 1.0 "The Color/Colour Update!"**
 
-# Due to an unforeseen issue that was identified upstream, the release of 1.0 will be delayed until i can address that issue personally.
+# Due to bugs and Quality control, 1.0 will remain DELAYED until it passes a more through QA test. We want to ship Quality, not Quantity
 
 > Co-developed with Claude (Anthropic) and arkadin91 (reference image, firmware discovery, OTA script logic). Build scripts are intentionally readable and modular for long-term maintainability.
 
@@ -22,7 +22,7 @@ Ubuntu DEVEL = Yellow
 
 (Thought Color Coding would clean it up a bit!)
 
-# I've DISABLED the "Template Repo" toggle for this repo! (Due to an upstream issue and chasing phantom issues, this repo will no longer be a template until i can address that, sorry!)
+# I've DISABLED the "Template Repo" toggle for this repo! (Due to Ubuntu shipping an x86 version of mkbootimg in the ARM64 package, we added the emergency hotfix to be run inside the chroot between step 3 and 5)
 ---
 
 ## Supported Devices
@@ -53,7 +53,7 @@ Adding a new device requires only a `devices/<brand>-<codename>.conf` file — n
 | Camera | ❌ Not working | Out of scope for now |
 | NFC | ❌ No hardware | Not present on Poco F1 |
 
-# Due to a bad package upstream, We now suffer an audio regression, this issue has been identified, and a Fix will be released in RC14. For the time being, we have restored support for RC10.2 (Emergency Legacy support) as it was the last known good builder before the issue was introduced. We have also included a hotfix that needs to be run inside the chroot (in /tmp) to address the phantom issue that appears after reboot. Sorry for the inconvience this has caused.
+# RC10.2.1 and RC13.1 Addresses the audio regression introduced by the phantom bug, will do more testing soon and test a pre-1.0 build soon.
 ---
 
 ## Architecture
