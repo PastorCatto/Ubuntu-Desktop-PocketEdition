@@ -1,6 +1,8 @@
 # Mobuntu (Now Color Coded!)
 **Document Version 4.4a — Pre-Release 1.0 "The Color/Colour Update!"**
 
+# Due to an unforeseen issue that was identified upstream, the release of 1.0 will be delayed until i can address that issue.
+
 > Co-developed with Claude (Anthropic) and arkadin91 (reference image, firmware discovery, OTA script logic). Build scripts are intentionally readable and modular for long-term maintainability.
 
 ---
@@ -51,6 +53,7 @@ Adding a new device requires only a `devices/<brand>-<codename>.conf` file — n
 | Camera | ❌ Not working | Out of scope for now |
 | NFC | ❌ No hardware | Not present on Poco F1 |
 
+# Due to a bad package upstream, We now suffer an audio regression, this issue has been identified, and a Fix will be released in RC14. For the time being, we have restored support for RC10.2 (Emergency Legacy support) as it was the last known good builder before the issue was introduced. We have also included a hotfix that needs to be run inside the chroot (in /tmp) to address the phantom issue that appears after reboot. Sorry for the inconvience this has caused.
 ---
 
 ## Architecture
