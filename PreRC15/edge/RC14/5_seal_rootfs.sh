@@ -73,7 +73,10 @@ AUTORESIZE=${RESIZE_CHOICE:-1}
 # -------------------------------------------------------
 # Step 4: Write /etc/kernel/cmdline + fstab
 # -------------------------------------------------------
-CMDLINE="root=UUID=${BUILD_UUID} rw rootwait console=tty0 console=ttyMSM0,115200n8 earlycon=qcom_geni,0x00A90000 ${BOOT_EXTRA}"
+#CMDLINE="root=UUID=${BUILD_UUID} rw rootwait console=tty0 console=ttyMSM0,115200n8 earlycon=qcom_geni,0x00A90000 ${BOOT_EXTRA}"
+
+# This cmdline works best in my opinion ;)
+CMDLINE="root=UUID=${BUILD_UUID} earlycon conscole=tty0 console=ttyMSM0,115200 init=/sbin/init ro loglevel=7"
 
 echo ">>> Writing /etc/kernel/cmdline..."
 sudo bash -c "echo '${CMDLINE}' > '${ROOTFS_DIR}/etc/kernel/cmdline'"
