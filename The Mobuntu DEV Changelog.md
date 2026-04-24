@@ -1,6 +1,6 @@
 # Mobuntu Changelog
 ## RC10.2.2 LTS → RC15
-> LTS cycle: ~1 week  
+> LTS cycle: ~1 week
 > RC10.2.2 is the stable LTS baseline. RC15 is the current development release.
 
 ---
@@ -122,11 +122,24 @@
   3. UML not available → `--fakemachine-backend=qemu` (~2.5 hrs, warn user)
   4. `--disable-fakemachine` → explicit opt-in only, requires root
 - x86-64 hosts building ARM64 supported via QEMU backend
+- WSL2 users: select `none` at backend prompt
 
 ### New: Multi-device build speed
 - Base rootfs cached as tarball after first build
 - Subsequent device builds skip debootstrap + apt, start from unpack
 - Estimated 40-60% faster for multi-device builds vs RC14 bash pipeline
+
+### Fixed: Boot cmdline (arkadin91)
+- Old cmdline: `root=UUID=... rw rootwait console=tty0 console=ttyMSM0,115200n8 earlycon=qcom_geni,0x00A90000 quiet splash`
+- New cmdline: `root=UUID=... earlycon console=tty0 console=ttyMSM0,115200 init=/sbin/init ro loglevel=7`
+- Changes:
+  - `rw rootwait` → `ro` (cleaner, fsck can run properly)
+  - `console=ttyMSM0,115200n8` → `115200` (no parity suffix)
+  - `earlycon=qcom_geni,0x00A90000` → `earlycon` (kernel auto-detects)
+  - `init=/sbin/init` added explicitly
+  - `loglevel=7` replaces quiet/splash toggle
+  - Boot verbosity prompt removed from `5_seal_rootfs.sh`
+- Credited to arkadin91 (confirmed working on beryllium reference image)
 
 ### Updated: `1_preflight.sh`
 - Generates `run_build.sh` instead of calling scripts directly
@@ -135,12 +148,15 @@
 - `.conf` remains source of truth — vars sourced and passed as `-t` flags
 
 ### Updated: `5_seal_rootfs.sh`
-- Now unpacks device tarball from debos output before building boot assets
+- Unpacks device tarball from debos output before building boot assets
+- New cmdline applied
+- Boot verbosity prompt removed
 - Boot packaging logic (mkbootimg / L4T) unchanged
 - rootfs image creation unchanged
 
 ### Updated: `verify_build.sh`
 - Aware of debos output paths and tarball structure
+- Unpacks tarball to temp dir for inspection, cleans up after
 - Base cache verification added
 
 ### Updated: `watchdog.sh`
@@ -151,6 +167,8 @@
 - Boot Chain section updated to reflect debos pipeline
 - `run_build.sh` added to file tree
 - `recipes/` directory added to file tree
+- Base tarball cache section added
+- `FAKEMACHINE_BACKEND` shown in status bar
 
 ---
 
@@ -186,3 +204,8 @@
 - **Cause:** switchroot L4T kernel .deb URL not yet confirmed
 - **Resolution:** Fill in `KERNEL_REPO` in all Switch configs before building.
   Verify DTB filenames against a working switchroot install.
+
+### Modem crashes WiFi and BT
+- **Affects:** Beryllium (and likely all SDM845 devices)
+- **Cause:** Under investigation
+- **Resolution:** Do not enable ModemManager or ofono on beryllium.
