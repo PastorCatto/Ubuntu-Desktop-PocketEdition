@@ -1,0 +1,61 @@
+# Mobuntu RC15 — devices/fajita.yaml
+# OnePlus 6T
+# Source of truth: devices/oneplus-fajita.conf
+# Identical to enchilada recipe — same SoC, same quirks, same WirePlumber fix.
+
+architecture: arm64
+
+actions:
+  - action: unpack
+    file: base-{{ .UBUNTU_RELEASE }}.tar.gz
+    compression: gz
+
+  - action: recipe
+    recipe: ../qcom.yaml
+    variables:
+      DEVICE_CODENAME: "{{ .DEVICE_CODENAME }}"
+      DEVICE_BRAND: "{{ .DEVICE_BRAND }}"
+      DEVICE_PACKAGES: "{{ .DEVICE_PACKAGES }}"
+      DEVICE_SERVICES: "{{ .DEVICE_SERVICES }}"
+      DEVICE_QUIRKS: "{{ .DEVICE_QUIRKS }}"
+      FIRMWARE_METHOD: "{{ .FIRMWARE_METHOD }}"
+      FIRMWARE_REPO: "{{ .FIRMWARE_REPO }}"
+
+  # Override 51-qcom.conf — fajita same as enchilada, no period-size tuning
+  - action: overlay
+    source: ../overlays/enchilada
+
+  - action: run
+    chroot: true
+    script: ../scripts/install-kernel.sh
+    environment:
+      KERNEL_METHOD: "{{ .KERNEL_METHOD }}"
+      KERNEL_REPO: "{{ .KERNEL_REPO }}"
+      KERNEL_SERIES: "{{ .KERNEL_SERIES }}"
+      KERNEL_VERSION_PIN: "{{ .KERNEL_VERSION_PIN }}"
+      BOOT_METHOD: "{{ .BOOT_METHOD }}"
+
+  - action: overlay
+    source: ../overlays/beryllium-hooks
+    destination: /
+
+  - action: run
+    chroot: true
+    command: |
+      chmod +x /etc/kernel/postinst.d/zz-qcom-bootimg 2>/dev/null || true
+      chmod +x /etc/initramfs/post-update.d/bootimg    2>/dev/null || true
+      mkdir -p /boot/efi
+
+  - action: run
+    chroot: true
+    script: ../scripts/setup-hostname.sh
+    environment:
+      DEVICE_HOSTNAME: "{{ .DEVICE_HOSTNAME }}"
+
+  - action: run
+    chroot: true
+    command: apt-get clean
+
+  - action: pack
+    file: {{ .DEVICE_IMAGE_LABEL }}-{{ .UBUNTU_RELEASE }}.tar.gz
+    compression: gz

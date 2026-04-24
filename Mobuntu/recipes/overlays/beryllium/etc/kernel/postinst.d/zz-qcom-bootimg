@@ -1,0 +1,58 @@
+#!/bin/bash
+# Mobuntu RC15 — zz-qcom-bootimg
+# Kernel postinst hook: rebuilds boot.img after kernel install or upgrade.
+# Placed at /etc/kernel/postinst.d/zz-qcom-bootimg
+# Reads DTB name from /etc/kernel/boot_dtb (written by 5_seal_rootfs.sh)
+# Reads cmdline from /etc/kernel/cmdline (written by 5_seal_rootfs.sh)
+set -e
+
+KERNEL_VERSION="$1"
+
+# Only run for SDM845 kernels
+case "$KERNEL_VERSION" in
+    *sdm845*) ;;
+    *) exit 0 ;;
+esac
+
+KERNEL="/boot/vmlinuz-${KERNEL_VERSION}"
+INITRD="/boot/initrd.img-${KERNEL_VERSION}"
+CMDLINE_FILE="/etc/kernel/cmdline"
+BOOT_IMG="/boot/boot.img"
+BOOT_DTB_FILE="/etc/kernel/boot_dtb"
+
+[ -f "$KERNEL" ]       || exit 0
+[ -f "$INITRD" ]       || exit 0
+[ -f "$CMDLINE_FILE" ] || exit 0
+
+if [ -f "$BOOT_DTB_FILE" ]; then
+    DTB_NAME=$(cat "$BOOT_DTB_FILE")
+else
+    DTB_NAME="sdm845-xiaomi-beryllium-tianma.dtb"
+fi
+
+DTB=$(find /usr/lib/linux-image-${KERNEL_VERSION}/qcom \
+           /boot \
+           -name "$DTB_NAME" 2>/dev/null | head -n 1)
+
+if [ -z "$DTB" ]; then
+    echo "WARNING: DTB '$DTB_NAME' not found — skipping boot.img rebuild."
+    exit 0
+fi
+
+CMDLINE=$(cat "$CMDLINE_FILE")
+KERNEL_DTB=$(mktemp /tmp/kernel-dtb-XXXX)
+cat "$KERNEL" "$DTB" > "$KERNEL_DTB"
+
+mkbootimg \
+    --kernel  "$KERNEL_DTB" \
+    --ramdisk "$INITRD" \
+    --pagesize 4096 \
+    --base 0x00000000 \
+    --kernel_offset  0x00008000 \
+    --ramdisk_offset 0x01000000 \
+    --tags_offset    0x00000100 \
+    --cmdline "$CMDLINE" \
+    -o "$BOOT_IMG"
+
+rm -f "$KERNEL_DTB"
+echo ">>> boot.img rebuilt: $(du -h $BOOT_IMG | cut -f1)"

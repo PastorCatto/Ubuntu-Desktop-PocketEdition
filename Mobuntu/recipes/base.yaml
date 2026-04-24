@@ -1,0 +1,104 @@
+# Mobuntu RC15 — base.yaml
+# Builds the base Ubuntu + UI rootfs common to all devices.
+# Output: base-{{ .UBUNTU_RELEASE }}.tar.gz (cached, reused by device recipes)
+#
+# Template vars required:
+#   UBUNTU_RELEASE, USERNAME, PASSWORD, UI_NAME, UI_DM, BUILD_COLOR, EXTRA_PKG
+
+architecture: arm64
+
+actions:
+  # -------------------------------------------------------
+  # 1. Bootstrap minimal Ubuntu rootfs
+  # -------------------------------------------------------
+  - action: debootstrap
+    suite: {{ .UBUNTU_RELEASE }}
+    components:
+      - main
+      - restricted
+      - universe
+      - multiverse
+    mirror: http://ports.ubuntu.com/ubuntu-ports
+
+  # -------------------------------------------------------
+  # 2. Minimal bootstrap tools (Ubuntu repos only, pre-Mobian)
+  # -------------------------------------------------------
+  - action: apt
+    packages:
+      - curl
+      - ca-certificates
+      - gnupg
+
+  # -------------------------------------------------------
+  # 3. Configure Ubuntu + Mobian apt sources
+  # -------------------------------------------------------
+  - action: run
+    chroot: true
+    script: scripts/setup-apt-sources.sh
+    environment:
+      UBUNTU_RELEASE: "{{ .UBUNTU_RELEASE }}"
+
+  # -------------------------------------------------------
+  # 4. Base system packages
+  # -------------------------------------------------------
+  - action: apt
+    update: false
+    packages:
+      - initramfs-tools
+      - sudo
+      - network-manager
+      - modemmanager
+      - linux-firmware
+      - bluez
+      - pipewire
+      - pipewire-pulse
+      - wireplumber
+      - openssh-server
+      - locales
+      - tzdata
+
+  # -------------------------------------------------------
+  # 5. UI + display manager
+  # -------------------------------------------------------
+  - action: run
+    chroot: true
+    script: scripts/setup-ui.sh
+    environment:
+      UI_NAME: "{{ .UI_NAME }}"
+      UI_DM: "{{ .UI_DM }}"
+      UBUNTU_RELEASE: "{{ .UBUNTU_RELEASE }}"
+      BUILD_COLOR: "{{ .BUILD_COLOR }}"
+
+  # -------------------------------------------------------
+  # 6. Extra packages
+  # -------------------------------------------------------
+{{ if .EXTRA_PKG }}
+  - action: apt
+    update: false
+    packages:
+      - {{ .EXTRA_PKG }}
+{{ end }}
+
+  # -------------------------------------------------------
+  # 7. User account
+  # -------------------------------------------------------
+  - action: run
+    chroot: true
+    script: scripts/create-user.sh
+    environment:
+      USERNAME: "{{ .USERNAME }}"
+      PASSWORD: "{{ .PASSWORD }}"
+
+  # -------------------------------------------------------
+  # 8. Stub hostname (overridden by device recipe)
+  # -------------------------------------------------------
+  - action: run
+    chroot: true
+    command: echo "mobuntu" > /etc/hostname
+
+  # -------------------------------------------------------
+  # 9. Pack base tarball — reused by all device recipes
+  # -------------------------------------------------------
+  - action: pack
+    file: base-{{ .UBUNTU_RELEASE }}.tar.gz
+    compression: gz

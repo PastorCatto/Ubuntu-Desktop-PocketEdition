@@ -111,12 +111,14 @@ if [ "$FIRMWARE_METHOD" = "git" ] && [ -n "$FIRMWARE_REPO" ]; then
     echo ">>> Cloning full firmware repo: $FIRMWARE_REPO"
     FW_TMP=$(mktemp -d /tmp/fw_XXXX)
     if git clone --depth=1 "$FIRMWARE_REPO" "$FW_TMP/fw" 2>/dev/null; then
-        echo ">>> Copying full firmware tree into rootfs..."
+        echo ">>> Stripping UCM configs from firmware clone (conflicts with WirePlumber)..."
+        rm -rf "$FW_TMP/fw/usr/share/alsa/ucm" "$FW_TMP/fw/usr/share/alsa/ucm2"
+        echo ">>> Copying firmware tree into rootfs..."
         sudo cp -r "$FW_TMP/fw/lib/." "$ROOTFS_DIR/lib/"
         if [ -d "$FW_TMP/fw/usr" ]; then
             sudo cp -r "$FW_TMP/fw/usr/." "$ROOTFS_DIR/usr/"
         fi
-        echo ">>> Full firmware staged from $FIRMWARE_REPO"
+        echo ">>> Firmware staged from $FIRMWARE_REPO (UCM stripped)"
         FW_STAGED=true
     else
         echo ">>> WARNING: git clone failed, trying local archive..."

@@ -1,0 +1,47 @@
+# Mobuntu RC15 — qcom.yaml
+# Included via recipe: action from SDM845 device recipes.
+# Applies Qualcomm-specific packages, firmware, services, and hooks.
+# Does NOT pack — device recipe handles that.
+#
+# Template vars required (passed from device recipe):
+#   DEVICE_CODENAME, DEVICE_BRAND, DEVICE_PACKAGES, DEVICE_SERVICES,
+#   DEVICE_QUIRKS, FIRMWARE_METHOD, FIRMWARE_REPO
+
+architecture: arm64
+
+actions:
+  # -------------------------------------------------------
+  # 1. Overlay: qcom initramfs hook + WirePlumber config
+  #    (generic SDM845 — device recipe may override 51-qcom.conf)
+  # -------------------------------------------------------
+  - action: overlay
+    source: overlays/qcom
+
+  # -------------------------------------------------------
+  # 2. Firmware staging (git method)
+  # -------------------------------------------------------
+{{ if eq .FIRMWARE_METHOD "git" }}
+  - action: run
+    chroot: false
+    label: Clone firmware repo
+    script: scripts/stage-firmware-git.sh
+    environment:
+      FIRMWARE_REPO: "{{ .FIRMWARE_REPO }}"
+      DEVICE_CODENAME: "{{ .DEVICE_CODENAME }}"
+      DEVICE_BRAND: "{{ .DEVICE_BRAND }}"
+{{ end }}
+
+  # -------------------------------------------------------
+  # 3. Qualcomm packages, services, hooks
+  # -------------------------------------------------------
+  - action: run
+    chroot: true
+    script: scripts/setup-qcom.sh
+    environment:
+      DEVICE_CODENAME: "{{ .DEVICE_CODENAME }}"
+      DEVICE_BRAND: "{{ .DEVICE_BRAND }}"
+      DEVICE_PACKAGES: "{{ .DEVICE_PACKAGES }}"
+      DEVICE_SERVICES: "{{ .DEVICE_SERVICES }}"
+      DEVICE_QUIRKS: "{{ .DEVICE_QUIRKS }}"
+      FIRMWARE_METHOD: "{{ .FIRMWARE_METHOD }}"
+      FIRMWARE_REPO: "{{ .FIRMWARE_REPO }}"

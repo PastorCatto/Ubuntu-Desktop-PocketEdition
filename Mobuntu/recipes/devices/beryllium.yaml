@@ -1,0 +1,86 @@
+# Mobuntu RC15 — devices/beryllium.yaml
+# Xiaomi Poco F1 (both Tianma and EBBG panels)
+# Source of truth: devices/xiaomi-beryllium-{tianma,ebbg}.conf
+#
+# Template vars (all passed from run_build.sh via -t flags):
+#   UBUNTU_RELEASE, DEVICE_CODENAME, DEVICE_BRAND, DEVICE_HOSTNAME,
+#   DEVICE_IMAGE_LABEL, DEVICE_PACKAGES, DEVICE_SERVICES, DEVICE_QUIRKS,
+#   FIRMWARE_METHOD, FIRMWARE_REPO, KERNEL_METHOD, KERNEL_REPO,
+#   KERNEL_SERIES, KERNEL_VERSION_PIN, BOOT_METHOD
+
+architecture: arm64
+
+actions:
+  # -------------------------------------------------------
+  # 1. Unpack base tarball (built by base.yaml, cached)
+  # -------------------------------------------------------
+  - action: unpack
+    file: base-{{ .UBUNTU_RELEASE }}.tar.gz
+    compression: gz
+
+  # -------------------------------------------------------
+  # 2. Qualcomm recipe (services, firmware, hooks, packages)
+  # -------------------------------------------------------
+  - action: recipe
+    recipe: ../qcom.yaml
+    variables:
+      DEVICE_CODENAME: "{{ .DEVICE_CODENAME }}"
+      DEVICE_BRAND: "{{ .DEVICE_BRAND }}"
+      DEVICE_PACKAGES: "{{ .DEVICE_PACKAGES }}"
+      DEVICE_SERVICES: "{{ .DEVICE_SERVICES }}"
+      DEVICE_QUIRKS: "{{ .DEVICE_QUIRKS }}"
+      FIRMWARE_METHOD: "{{ .FIRMWARE_METHOD }}"
+      FIRMWARE_REPO: "{{ .FIRMWARE_REPO }}"
+
+  # -------------------------------------------------------
+  # 3. Kernel install + mkbootimg native build
+  # -------------------------------------------------------
+  - action: run
+    chroot: true
+    script: ../scripts/install-kernel.sh
+    environment:
+      KERNEL_METHOD: "{{ .KERNEL_METHOD }}"
+      KERNEL_REPO: "{{ .KERNEL_REPO }}"
+      KERNEL_SERIES: "{{ .KERNEL_SERIES }}"
+      KERNEL_VERSION_PIN: "{{ .KERNEL_VERSION_PIN }}"
+      BOOT_METHOD: "{{ .BOOT_METHOD }}"
+
+  # -------------------------------------------------------
+  # 4. Kernel hook overlays (mkbootimg post-install hook)
+  # -------------------------------------------------------
+  - action: overlay
+    source: ../overlays/beryllium-hooks
+    destination: /
+
+  # -------------------------------------------------------
+  # 5. Set permissions on kernel hooks
+  # -------------------------------------------------------
+  - action: run
+    chroot: true
+    command: |
+      chmod +x /etc/kernel/postinst.d/zz-qcom-bootimg 2>/dev/null || true
+      chmod +x /etc/initramfs/post-update.d/bootimg    2>/dev/null || true
+      mkdir -p /boot/efi
+
+  # -------------------------------------------------------
+  # 6. Hostname
+  # -------------------------------------------------------
+  - action: run
+    chroot: true
+    script: ../scripts/setup-hostname.sh
+    environment:
+      DEVICE_HOSTNAME: "{{ .DEVICE_HOSTNAME }}"
+
+  # -------------------------------------------------------
+  # 7. Apt cleanup
+  # -------------------------------------------------------
+  - action: run
+    chroot: true
+    command: apt-get clean
+
+  # -------------------------------------------------------
+  # 8. Pack device tarball — consumed by 5_seal_rootfs.sh
+  # -------------------------------------------------------
+  - action: pack
+    file: {{ .DEVICE_IMAGE_LABEL }}-{{ .UBUNTU_RELEASE }}.tar.gz
+    compression: gz

@@ -1,0 +1,41 @@
+# Mobuntu RC15 — devices/switch-v2.yaml
+# Nintendo Switch V2 (Mariko, T210B01, hoag)
+# Source of truth: devices/nvidia-switch-v2.conf
+
+architecture: arm64
+
+actions:
+  - action: unpack
+    file: base-{{ .UBUNTU_RELEASE }}.tar.gz
+    compression: gz
+
+  - action: recipe
+    recipe: ../l4t.yaml
+    variables:
+      DEVICE_CODENAME: "{{ .DEVICE_CODENAME }}"
+      DEVICE_PACKAGES: "{{ .DEVICE_PACKAGES }}"
+      DEVICE_SERVICES: "{{ .DEVICE_SERVICES }}"
+
+  - action: run
+    chroot: true
+    script: ../scripts/install-kernel.sh
+    environment:
+      KERNEL_METHOD: "{{ .KERNEL_METHOD }}"
+      KERNEL_REPO: "{{ .KERNEL_REPO }}"
+      KERNEL_SERIES: "{{ .KERNEL_SERIES }}"
+      KERNEL_VERSION_PIN: "{{ .KERNEL_VERSION_PIN }}"
+      BOOT_METHOD: "{{ .BOOT_METHOD }}"
+
+  - action: run
+    chroot: true
+    script: ../scripts/setup-hostname.sh
+    environment:
+      DEVICE_HOSTNAME: "{{ .DEVICE_HOSTNAME }}"
+
+  - action: run
+    chroot: true
+    command: apt-get clean
+
+  - action: pack
+    file: {{ .DEVICE_IMAGE_LABEL }}-{{ .UBUNTU_RELEASE }}.tar.gz
+    compression: gz
