@@ -80,21 +80,38 @@ echo ">>> mkbootimg ready."
 # -------------------------------------------------------
 if [ "$HOST_IS_ARM64" = "false" ]; then
     echo ">>> Activating QEMU binfmt for arm64..."
-    sudo systemctl restart systemd-binfmt 2>/dev/null || true
-    sleep 1
 
-    if ! grep -q "enabled" /proc/sys/fs/binfmt_misc/qemu-aarch64 2>/dev/null; then
+    # Ensure binfmt-support is installed (provides update-binfmts)
+    sudo apt-get install -y binfmt-support 2>/dev/null || true
+
+    # Ensure binfmt_misc is mounted
+    if ! mountpoint -q /proc/sys/fs/binfmt_misc 2>/dev/null; then
         sudo mount binfmt_misc -t binfmt_misc /proc/sys/fs/binfmt_misc 2>/dev/null || true
-        printf ':qemu-aarch64:M::\x7fELF\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\xb7\x00:\xff\xff\xff\xff\xff\xff\xff\x00\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff\xff:/usr/bin/qemu-aarch64-static:F' | sudo tee /proc/sys/fs/binfmt_misc/register 2>/dev/null || true
     fi
+
+    # Try update-binfmts first (most reliable in WSL2)
+    if command -v update-binfmts &>/dev/null; then
+        sudo update-binfmts --enable qemu-aarch64 2>/dev/null || true
+    fi
+
+    # Fallback: manual /proc registration if still not active
     if ! grep -q "enabled" /proc/sys/fs/binfmt_misc/qemu-aarch64 2>/dev/null; then
-        echo ">>> ERROR: binfmt handler still not active."
+        echo ">>> update-binfmts inactive, trying manual registration..."
+        echo ':qemu-aarch64:M::\x7fELF\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\xb7\x00:\xff\xff\xff\xff\xff\xff\xff\x00\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff\xff:/usr/bin/qemu-aarch64-static:F' \
+            | sudo tee /proc/sys/fs/binfmt_misc/register 2>/dev/null || true
+    fi
+
+    # Final check
+    if ! grep -q "enabled" /proc/sys/fs/binfmt_misc/qemu-aarch64 2>/dev/null; then
+        echo ">>> ERROR: binfmt handler still not active after all methods."
+        echo ">>>   Try: sudo apt-get install --reinstall ${QEMU_STATIC_PKG}"
+        echo ">>>   Then re-run this script."
         exit 1
     fi
     echo ">>> binfmt confirmed active."
 
-    if [ ! -f /usr/bin/qemu-aarch64-static ]; then
-        sudo apt-get install --reinstall qemu-user-static
+    if [ ! -f "${QEMU_BIN}" ]; then
+        sudo apt-get install --reinstall "${QEMU_STATIC_PKG}"
     fi
 else
     echo ">>> Skipping QEMU setup (not needed on arm64 host)."
