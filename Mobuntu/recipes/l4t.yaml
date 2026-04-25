@@ -1,18 +1,9 @@
 # Mobuntu RC15 — l4t.yaml
 # Included via recipe: action from Switch device recipes.
-# L4T boot method has no Qualcomm services — this recipe is intentionally
-# minimal. Boot asset packaging (lz4) is handled by 5_seal_rootfs.sh.
-# Does NOT pack — device recipe handles that.
-#
-# Template vars required:
-#   DEVICE_CODENAME, DEVICE_PACKAGES, DEVICE_SERVICES
 
 architecture: arm64
 
 actions:
-  # -------------------------------------------------------
-  # 1. L4T-specific packages (if any defined in device config)
-  # -------------------------------------------------------
 {{ if .DEVICE_PACKAGES }}
   - action: apt
     update: false
@@ -20,21 +11,15 @@ actions:
       - {{ .DEVICE_PACKAGES }}
 {{ end }}
 
-  # -------------------------------------------------------
-  # 2. Device services
-  # -------------------------------------------------------
 {{ if .DEVICE_SERVICES }}
   - action: run
     chroot: true
     command: |
       for svc in {{ .DEVICE_SERVICES }}; do
-        systemctl enable "$svc" 2>/dev/null || true
+          systemctl enable "$svc" 2>/dev/null || true
       done
 {{ end }}
 
-  # -------------------------------------------------------
-  # 3. L4T boot stub — /boot/efi placeholder
-  # -------------------------------------------------------
   - action: run
     chroot: true
     command: mkdir -p /boot/efi

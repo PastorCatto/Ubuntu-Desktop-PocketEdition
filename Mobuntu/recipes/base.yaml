@@ -1,8 +1,8 @@
 # Mobuntu RC15 — base.yaml
-# Builds the base Ubuntu + UI rootfs common to all devices.
-# Output: base-{{ .UBUNTU_RELEASE }}.tar.gz (cached, reused by device recipes)
+# All template vars expanded by debos before execution.
+# No env var inheritance through systemd-nspawn needed.
 #
-# Template vars required:
+# Required -t flags:
 #   UBUNTU_RELEASE, USERNAME, PASSWORD, UI_NAME, UI_DM, BUILD_COLOR, EXTRA_PKG
 
 architecture: arm64
@@ -21,25 +21,23 @@ actions:
     mirror: http://ports.ubuntu.com/ubuntu-ports
 
   # -------------------------------------------------------
-  # 2. Minimal bootstrap tools (Ubuntu repos only, pre-Mobian)
-  # -------------------------------------------------------
-  - action: apt
-    packages:
-      - curl
-      - ca-certificates
-      - gnupg
-
-  # -------------------------------------------------------
-  # 3. Configure Ubuntu + Mobian apt sources
+  # 2. Ubuntu + Mobian apt sources
   # -------------------------------------------------------
   - action: run
     chroot: true
-    script: scripts/setup-apt-sources.sh
-    environment:
-      UBUNTU_RELEASE: "{{ .UBUNTU_RELEASE }}"
+    command: |
+      printf "deb http://ports.ubuntu.com/ubuntu-ports/ {{ .UBUNTU_RELEASE }} main restricted universe multiverse\n" > /etc/apt/sources.list
+      printf "deb http://ports.ubuntu.com/ubuntu-ports/ {{ .UBUNTU_RELEASE }}-updates main restricted universe multiverse\n" >> /etc/apt/sources.list
+      printf "deb http://ports.ubuntu.com/ubuntu-ports/ {{ .UBUNTU_RELEASE }}-security main restricted universe multiverse\n" >> /etc/apt/sources.list
+      apt-get update
+      apt-get install -y curl ca-certificates gnupg
+      curl -fsSL https://repo.mobian.org/mobian.gpg -o /etc/apt/trusted.gpg.d/mobian.gpg
+      printf "deb http://repo.mobian.org/ staging main non-free-firmware\n" > /etc/apt/sources.list.d/mobian.list
+      apt-get update
+      apt-get upgrade -y
 
   # -------------------------------------------------------
-  # 4. Base system packages
+  # 3. Base system packages
   # -------------------------------------------------------
   - action: apt
     update: false
@@ -58,46 +56,113 @@ actions:
       - tzdata
 
   # -------------------------------------------------------
-  # 5. UI + display manager
+  # 4. UI + display manager
+  # All cases inlined — template var expanded before chroot entry
   # -------------------------------------------------------
   - action: run
     chroot: true
-    script: scripts/setup-ui.sh
-    environment:
-      UI_NAME: "{{ .UI_NAME }}"
-      UI_DM: "{{ .UI_DM }}"
-      UBUNTU_RELEASE: "{{ .UBUNTU_RELEASE }}"
-      BUILD_COLOR: "{{ .BUILD_COLOR }}"
+    command: |
+      export DEBIAN_FRONTEND=noninteractive
+      UI_NAME="{{ .UI_NAME }}"
+      UI_DM="{{ .UI_DM }}"
+      BUILD_COLOR="{{ .BUILD_COLOR }}"
+      UBUNTU_RELEASE="{{ .UBUNTU_RELEASE }}"
+      echo ">>> Installing UI: ${UI_NAME} (DM: ${UI_DM})"
+      case "${UI_NAME}" in
+      phosh)
+          apt-get install -y phosh greetd
+          apt-get install -y squeekboard 2>/dev/null || \
+              apt-get install -y phosh-osk-stub 2>/dev/null || \
+              echo "WARNING: No OSK available"
+          useradd -r -m -G video,render,input,audio greeter 2>/dev/null || \
+              usermod -aG video,render,input,audio greeter 2>/dev/null || true
+          mkdir -p /etc/greetd
+          printf "[terminal]\nvt = 1\n\n[default_session]\ncommand = \"/usr/bin/phosh\"\nuser = \"greeter\"\n" \
+              > /etc/greetd/config.toml
+          systemctl enable greetd
+          ;;
+      ubuntu-desktop-minimal)
+          apt-get install -y ubuntu-desktop-minimal
+          systemctl enable gdm3
+          mkdir -p /etc/dconf/db/local.d
+          printf "[org/gnome/desktop/interface]\naccent-color='%s'\n\n[org/gnome/nautilus/desktop]\nvolumes-visible=false\n" \
+              "${BUILD_COLOR}" > /etc/dconf/db/local.d/01-mobuntu-theme
+          dconf update 2>/dev/null || true
+          ;;
+      unity)
+          apt-get install -y ubuntu-unity-desktop
+          systemctl enable lightdm
+          ;;
+      plasma-desktop)
+          apt-get install -y kde-plasma-desktop
+          systemctl enable sddm
+          ;;
+      plasma-mobile)
+          apt-get install -y plasma-mobile maliit-keyboard
+          systemctl enable sddm
+          ;;
+      lomiri)
+          apt-get install -y lomiri squeekboard greetd
+          useradd -r -m -G video,render,input,audio greeter 2>/dev/null || \
+              usermod -aG video,render,input,audio greeter 2>/dev/null || true
+          mkdir -p /etc/greetd
+          printf "[terminal]\nvt = 1\n\n[default_session]\ncommand = \"lomiri\"\nuser = \"greeter\"\n" \
+              > /etc/greetd/config.toml
+          systemctl enable greetd
+          ;;
+      *)
+          echo "WARNING: Unknown UI '${UI_NAME}', falling back to phosh"
+          apt-get install -y phosh greetd
+          apt-get install -y squeekboard 2>/dev/null || \
+              apt-get install -y phosh-osk-stub 2>/dev/null || true
+          useradd -r -m -G video,render,input,audio greeter 2>/dev/null || \
+              usermod -aG video,render,input,audio greeter 2>/dev/null || true
+          mkdir -p /etc/greetd
+          printf "[terminal]\nvt = 1\n\n[default_session]\ncommand = \"/usr/bin/phosh\"\nuser = \"greeter\"\n" \
+              > /etc/greetd/config.toml
+          systemctl enable greetd
+          ;;
+      esac
+      for dm in gdm3 lightdm sddm greetd; do
+          [ "$dm" != "${UI_DM}" ] && systemctl disable "$dm" 2>/dev/null || true
+      done
 
   # -------------------------------------------------------
-  # 6. Extra packages
+  # 5. Extra packages
   # -------------------------------------------------------
 {{ if .EXTRA_PKG }}
-  - action: apt
-    update: false
-    packages:
-      - {{ .EXTRA_PKG }}
+  - action: run
+    chroot: true
+    command: apt-get install -y {{ .EXTRA_PKG }}
 {{ end }}
 
   # -------------------------------------------------------
-  # 7. User account
+  # 6. User account
   # -------------------------------------------------------
   - action: run
     chroot: true
-    script: scripts/create-user.sh
-    environment:
-      USERNAME: "{{ .USERNAME }}"
-      PASSWORD: "{{ .PASSWORD }}"
+    command: |
+      useradd -m -s /bin/bash -G sudo,video,audio,netdev,dialout "{{ .USERNAME }}" || true
+      echo "{{ .USERNAME }}:{{ .PASSWORD }}" | chpasswd
+      echo "{{ .USERNAME }} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/mobuntu-user
+      chmod 0440 /etc/sudoers.d/mobuntu-user
 
   # -------------------------------------------------------
-  # 8. Stub hostname (overridden by device recipe)
+  # 7. Stub hostname (overridden by device recipe)
   # -------------------------------------------------------
   - action: run
     chroot: true
     command: echo "mobuntu" > /etc/hostname
 
   # -------------------------------------------------------
-  # 9. Pack base tarball — reused by all device recipes
+  # 8. Apt cleanup
+  # -------------------------------------------------------
+  - action: run
+    chroot: true
+    command: apt-get clean
+
+  # -------------------------------------------------------
+  # 9. Pack base tarball
   # -------------------------------------------------------
   - action: pack
     file: base-{{ .UBUNTU_RELEASE }}.tar.gz

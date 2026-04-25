@@ -1,18 +1,12 @@
 # Mobuntu RC15 — qcom.yaml
 # Included via recipe: action from SDM845 device recipes.
-# Applies Qualcomm-specific packages, firmware, services, and hooks.
-# Does NOT pack — device recipe handles that.
-#
-# Template vars required (passed from device recipe):
-#   DEVICE_CODENAME, DEVICE_BRAND, DEVICE_PACKAGES, DEVICE_SERVICES,
-#   DEVICE_QUIRKS, FIRMWARE_METHOD, FIRMWARE_REPO
+# All template vars expanded by debos before execution.
 
 architecture: arm64
 
 actions:
   # -------------------------------------------------------
-  # 1. Overlay: qcom initramfs hook + WirePlumber config
-  #    (generic SDM845 — device recipe may override 51-qcom.conf)
+  # 1. Overlay: WirePlumber config + initramfs hook
   # -------------------------------------------------------
   - action: overlay
     source: overlays/qcom
@@ -32,16 +26,73 @@ actions:
 {{ end }}
 
   # -------------------------------------------------------
-  # 3. Qualcomm packages, services, hooks
+  # 3. Qualcomm packages, services, hooks — all vars inlined
   # -------------------------------------------------------
   - action: run
     chroot: true
-    script: scripts/setup-qcom.sh
-    environment:
-      DEVICE_CODENAME: "{{ .DEVICE_CODENAME }}"
-      DEVICE_BRAND: "{{ .DEVICE_BRAND }}"
-      DEVICE_PACKAGES: "{{ .DEVICE_PACKAGES }}"
-      DEVICE_SERVICES: "{{ .DEVICE_SERVICES }}"
-      DEVICE_QUIRKS: "{{ .DEVICE_QUIRKS }}"
-      FIRMWARE_METHOD: "{{ .FIRMWARE_METHOD }}"
-      FIRMWARE_REPO: "{{ .FIRMWARE_REPO }}"
+    command: |
+      export DEBIAN_FRONTEND=noninteractive
+      DEVICE_PACKAGES="{{ .DEVICE_PACKAGES }}"
+      DEVICE_SERVICES="{{ .DEVICE_SERVICES }}"
+      DEVICE_QUIRKS="{{ .DEVICE_QUIRKS }}"
+      FIRMWARE_METHOD="{{ .FIRMWARE_METHOD }}"
+
+      echo ">>> Installing alsa-ucm-conf..."
+      apt-get install -y alsa-ucm-conf
+
+      if [ -n "${DEVICE_PACKAGES}" ]; then
+          echo ">>> Installing device packages: ${DEVICE_PACKAGES}"
+          apt-get install -y ${DEVICE_PACKAGES}
+      fi
+
+      echo ">>> Fetching Adreno 630 GPU firmware..."
+      KERNEL_ORG="https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain"
+      fetch_fw() {
+          local DEST="$1" FILE="$2"
+          mkdir -p "$DEST"
+          curl -L -f -s -o "$DEST/$(basename $FILE)" "$KERNEL_ORG/$FILE" && \
+              echo "  OK: $FILE" || echo "  WARN: Failed $FILE (non-fatal)"
+          return 0
+      }
+      fetch_fw "/lib/firmware/qcom" "qcom/a630_sqe.fw"
+      fetch_fw "/lib/firmware/qcom" "qcom/a630_gmu.bin"
+      [ "${FIRMWARE_METHOD}" != "git" ] && \
+          fetch_fw "/lib/firmware/qcom/sdm845" "qcom/sdm845/a630_zap.mbn"
+
+      echo ">>> Setting up Qualcomm service ordering..."
+      mkdir -p /etc/systemd/system/pd-mapper.service.d
+      printf '[Unit]\nAfter=qrtr-ns.service\nRequires=qrtr-ns.service\n' \
+          > /etc/systemd/system/pd-mapper.service.d/ordering.conf
+      mkdir -p /etc/systemd/system/rmtfs.service.d
+      printf '[Unit]\nAfter=qrtr-ns.service\nRequires=qrtr-ns.service\n' \
+          > /etc/systemd/system/rmtfs.service.d/ordering.conf
+
+      systemctl enable qrtr-ns  2>/dev/null || true
+      systemctl enable rmtfs    2>/dev/null || true
+      systemctl enable pd-mapper 2>/dev/null || true
+      systemctl enable tqftpserv 2>/dev/null || true
+      systemctl daemon-reload   2>/dev/null || true
+
+      echo ">>> Masking ALSA state services..."
+      systemctl mask alsa-state   2>/dev/null || true
+      systemctl mask alsa-restore 2>/dev/null || true
+
+      if [ -f /usr/share/initramfs-tools/hooks/qcom-firmware ]; then
+          chmod +x /usr/share/initramfs-tools/hooks/qcom-firmware
+      fi
+
+      if [ -n "${DEVICE_SERVICES}" ]; then
+          for svc in ${DEVICE_SERVICES}; do
+              systemctl enable "$svc" 2>/dev/null || true
+          done
+      fi
+
+      if [ -f /etc/kernel/postinst.d/zz-qcom-bootimg ]; then
+          chmod +x /etc/kernel/postinst.d/zz-qcom-bootimg
+      fi
+      if [ -f /etc/initramfs/post-update.d/bootimg ]; then
+          chmod +x /etc/initramfs/post-update.d/bootimg
+      fi
+
+      mkdir -p /boot/efi
+      echo ">>> Qualcomm setup complete."

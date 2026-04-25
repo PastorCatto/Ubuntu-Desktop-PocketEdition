@@ -1,26 +1,13 @@
 # Mobuntu RC15 — devices/beryllium.yaml
-# Xiaomi Poco F1 (both Tianma and EBBG panels)
-# Source of truth: devices/xiaomi-beryllium-{tianma,ebbg}.conf
-#
-# Template vars (all passed from run_build.sh via -t flags):
-#   UBUNTU_RELEASE, DEVICE_CODENAME, DEVICE_BRAND, DEVICE_HOSTNAME,
-#   DEVICE_IMAGE_LABEL, DEVICE_PACKAGES, DEVICE_SERVICES, DEVICE_QUIRKS,
-#   FIRMWARE_METHOD, FIRMWARE_REPO, KERNEL_METHOD, KERNEL_REPO,
-#   KERNEL_SERIES, KERNEL_VERSION_PIN, BOOT_METHOD
+# Xiaomi Poco F1 (Tianma + EBBG)
 
 architecture: arm64
 
 actions:
-  # -------------------------------------------------------
-  # 1. Unpack base tarball (built by base.yaml, cached)
-  # -------------------------------------------------------
   - action: unpack
     file: base-{{ .UBUNTU_RELEASE }}.tar.gz
     compression: gz
 
-  # -------------------------------------------------------
-  # 2. Qualcomm recipe (services, firmware, hooks, packages)
-  # -------------------------------------------------------
   - action: recipe
     recipe: ../qcom.yaml
     variables:
@@ -32,29 +19,54 @@ actions:
       FIRMWARE_METHOD: "{{ .FIRMWARE_METHOD }}"
       FIRMWARE_REPO: "{{ .FIRMWARE_REPO }}"
 
-  # -------------------------------------------------------
-  # 3. Kernel install + mkbootimg native build
-  # -------------------------------------------------------
-  - action: run
-    chroot: true
-    script: ../scripts/install-kernel.sh
-    environment:
-      KERNEL_METHOD: "{{ .KERNEL_METHOD }}"
-      KERNEL_REPO: "{{ .KERNEL_REPO }}"
-      KERNEL_SERIES: "{{ .KERNEL_SERIES }}"
-      KERNEL_VERSION_PIN: "{{ .KERNEL_VERSION_PIN }}"
-      BOOT_METHOD: "{{ .BOOT_METHOD }}"
-
-  # -------------------------------------------------------
-  # 4. Kernel hook overlays (mkbootimg post-install hook)
-  # -------------------------------------------------------
   - action: overlay
     source: ../overlays/beryllium-hooks
     destination: /
 
-  # -------------------------------------------------------
-  # 5. Set permissions on kernel hooks
-  # -------------------------------------------------------
+  - action: run
+    chroot: true
+    command: |
+      export DEBIAN_FRONTEND=noninteractive
+      KERNEL_METHOD="{{ .KERNEL_METHOD }}"
+      KERNEL_REPO="{{ .KERNEL_REPO }}"
+      KERNEL_SERIES="{{ .KERNEL_SERIES }}"
+      KERNEL_VERSION_PIN="{{ .KERNEL_VERSION_PIN }}"
+
+      echo ">>> Installing kernel (method: ${KERNEL_METHOD}, series: ${KERNEL_SERIES})"
+      case "${KERNEL_METHOD}" in
+      mobian)
+          PKG="linux-image-${KERNEL_SERIES}"
+          if [ -n "${KERNEL_VERSION_PIN}" ]; then
+              apt-get install -y "${PKG}=${KERNEL_VERSION_PIN}-1" 2>/dev/null || \
+              apt-get install -y "${PKG}=${KERNEL_VERSION_PIN}" 2>/dev/null || \
+              apt-get install -y "$PKG"
+          else
+              apt-get install -y "$PKG"
+          fi
+          ;;
+      custom_url)
+          TMP_DEB=$(mktemp /tmp/kernel-XXXX.deb)
+          curl -fsSL -o "$TMP_DEB" "${KERNEL_REPO}"
+          dpkg -i "$TMP_DEB" || apt-get install -f -y
+          rm -f "$TMP_DEB"
+          ;;
+      esac
+
+      echo ">>> Building mkbootimg natively for ARM64..."
+      apt-get install -y git build-essential
+      rm -rf /tmp/mkbootimg-build
+      git clone --depth=1 https://github.com/osm0sis/mkbootimg /tmp/mkbootimg-build
+      sed -i 's/-Werror//g' /tmp/mkbootimg-build/Makefile
+      sed -i 's/-Werror//g' /tmp/mkbootimg-build/libmincrypt/Makefile
+      make -C /tmp/mkbootimg-build
+      cp /tmp/mkbootimg-build/mkbootimg /usr/local/bin/mkbootimg
+      cp /tmp/mkbootimg-build/unpackbootimg /usr/local/bin/unpackbootimg
+      chmod +x /usr/local/bin/mkbootimg /usr/local/bin/unpackbootimg
+      rm -rf /tmp/mkbootimg-build
+
+      echo ">>> Updating initramfs..."
+      update-initramfs -c -k all
+
   - action: run
     chroot: true
     command: |
@@ -62,25 +74,17 @@ actions:
       chmod +x /etc/initramfs/post-update.d/bootimg    2>/dev/null || true
       mkdir -p /boot/efi
 
-  # -------------------------------------------------------
-  # 6. Hostname
-  # -------------------------------------------------------
   - action: run
     chroot: true
-    script: ../scripts/setup-hostname.sh
-    environment:
-      DEVICE_HOSTNAME: "{{ .DEVICE_HOSTNAME }}"
+    command: |
+      echo "{{ .DEVICE_HOSTNAME }}" > /etc/hostname
+      printf "127.0.0.1   localhost\n127.0.1.1   {{ .DEVICE_HOSTNAME }}\n::1         localhost ip6-localhost ip6-loopback\n" \
+          > /etc/hosts
 
-  # -------------------------------------------------------
-  # 7. Apt cleanup
-  # -------------------------------------------------------
   - action: run
     chroot: true
     command: apt-get clean
 
-  # -------------------------------------------------------
-  # 8. Pack device tarball — consumed by 5_seal_rootfs.sh
-  # -------------------------------------------------------
   - action: pack
     file: {{ .DEVICE_IMAGE_LABEL }}-{{ .UBUNTU_RELEASE }}.tar.gz
     compression: gz
