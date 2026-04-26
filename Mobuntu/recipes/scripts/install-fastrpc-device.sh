@@ -19,6 +19,13 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="${SCRIPT_DIR}/../.."
 
+# Debos template substitution doesn't always survive the environment: block.
+# Fall back to sourcing build.env from the repo root if vars are empty.
+if [ -z "${DEVICE_BRAND}" ] || [ -z "${DEVICE_CODENAME}" ]; then
+    BUILDENV="${REPO_ROOT}/build.env"
+    [ -f "${BUILDENV}" ] && source "${BUILDENV}" || true
+fi
+
 FW_DIR="${REPO_ROOT}/firmware/${DEVICE_BRAND}-${DEVICE_CODENAME}"
 PKG_DIR="${REPO_ROOT}/packages/fastrpc"
 

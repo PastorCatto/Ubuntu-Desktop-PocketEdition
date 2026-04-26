@@ -1,0 +1,27 @@
+#!/bin/sh
+# Mobuntu RC15 — initramfs hook: include Qualcomm firmware blobs
+# Runs during update-initramfs to bundle firmware into the initrd so that
+# remoteproc can load ADSP/CDSP/SLPI firmware at early boot.
+PREREQ=""
+prereqs() { echo "$PREREQ"; }
+case "$1" in prereqs) prereqs; exit 0 ;; esac
+
+. /usr/share/initramfs-tools/hook-functions
+
+FW_DIRS="
+    /lib/firmware/qcom
+    /lib/firmware/qcom/sdm845
+    /lib/firmware/qcom/sdm845/Xiaomi/beryllium
+"
+
+for dir in $FW_DIRS; do
+    [ -d "$dir" ] || continue
+    for fw in "$dir"/*.mbn "$dir"/*.bin "$dir"/*.fw "$dir"/*.jsn; do
+        [ -f "$fw" ] || continue
+        DESTDIR="${DESTDIR}/$(dirname $fw)"
+        mkdir -p "$DESTDIR"
+        cp "$fw" "${DESTDIR}/"
+    done
+done
+
+exit 0

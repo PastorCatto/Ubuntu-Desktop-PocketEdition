@@ -1,0 +1,5 @@
+#!/bin/sh
+# Mobuntu RC15 — bootimg
+# initramfs post-update hook: triggers boot.img rebuild after initrd update.
+# Placed at /etc/initramfs/post-update.d/bootimg
+/etc/kernel/postinst.d/zz-qcom-bootimg "$1"

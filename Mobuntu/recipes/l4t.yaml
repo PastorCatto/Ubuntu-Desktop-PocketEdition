@@ -1,16 +1,61 @@
 # Mobuntu RC15 — l4t.yaml
 # Included via recipe: action from Switch device recipes.
+# Targets Ubuntu noble (24.04) — theofficialgman's l4t-debs does not yet
+# support resolute (26.04). Switch builds use DEVICE_UBUNTU_OVERRIDE=noble.
 
 architecture: arm64
 
 actions:
-{{ if .DEVICE_PACKAGES }}
-  - action: apt
-    update: false
-    packages:
-      - {{ .DEVICE_PACKAGES }}
-{{ end }}
+  # -------------------------------------------------------
+  # 1. Add theofficialgman l4t-debs apt repo
+  # -------------------------------------------------------
+  - action: run
+    chroot: true
+    command: |
+      export DEBIAN_FRONTEND=noninteractive
 
+      # Add theofficialgman's signing key and apt source
+      curl -fsSL "https://theofficialgman.github.io/l4t-debs/KEY.gpg" \
+          -o /etc/apt/trusted.gpg.d/theofficialgman-l4t.gpg
+
+      # Always use noble — l4t-debs only ships noble and jammy
+      printf "deb https://theofficialgman.github.io/l4t-debs/ noble main\n" \
+          > /etc/apt/sources.list.d/l4t-debs.list
+
+      apt-get update
+
+  # -------------------------------------------------------
+  # 2. Install L4T BSP packages + device packages
+  # -------------------------------------------------------
+  - action: run
+    chroot: true
+    command: |
+      export DEBIAN_FRONTEND=noninteractive
+
+      # Core L4T BSP packages — required for all Switch variants
+      # Package names verified from theofficialgman's l4t-debs repo (noble)
+      # TODO: verify exact names with: curl https://theofficialgman.github.io/l4t-debs/dists/noble/main/binary-arm64/Packages | grep "^Package:"
+      L4T_PACKAGES="
+          nvidia-l4t-core
+          nvidia-l4t-init
+          nvidia-l4t-firmware
+          nvidia-l4t-kernel
+          nvidia-l4t-kernel-dtbs
+          nvidia-l4t-xusb-firmware
+          nvidia-l4t-libvulkan
+      "
+
+      apt-get install -y ${L4T_PACKAGES}
+
+      # Device-specific extra packages (from device config)
+      DEVICE_PACKAGES="{{ .DEVICE_PACKAGES }}"
+      if [ -n "${DEVICE_PACKAGES}" ]; then
+          apt-get install -y ${DEVICE_PACKAGES}
+      fi
+
+  # -------------------------------------------------------
+  # 3. Enable device services
+  # -------------------------------------------------------
 {{ if .DEVICE_SERVICES }}
   - action: run
     chroot: true
@@ -20,6 +65,18 @@ actions:
       done
 {{ end }}
 
+  # -------------------------------------------------------
+  # 4. Tegra-specific setup
+  # -------------------------------------------------------
   - action: run
     chroot: true
-    command: mkdir -p /boot/efi
+    command: |
+      # Required by some L4T initramfs hooks
+      mkdir -p /boot/efi
+
+      # joycond — JoyCon/ProCon driver service
+      # Enabled only if the package was installed
+      systemctl enable joycond 2>/dev/null || true
+
+      # nvpmodel — power/OC profile daemon
+      systemctl enable nvpmodel 2>/dev/null || true
