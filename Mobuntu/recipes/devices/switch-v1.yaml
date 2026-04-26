@@ -1,11 +1,14 @@
 # Mobuntu RC15 — devices/switch-v1.yaml
 # Nintendo Switch V1 (Erista, T210, icosa)
+# Ubuntu base: noble (24.04) — forced by DEVICE_UBUNTU_OVERRIDE in device config.
+# l4t-debs does not yet support resolute (26.04).
 
 architecture: arm64
 
 actions:
+  # Unpack base tarball — uses DEVICE_UBUNTU_OVERRIDE (noble), not UBUNTU_RELEASE
   - action: unpack
-    file: base-{{ .UBUNTU_RELEASE }}.tar.gz
+    file: base-{{ .DEVICE_UBUNTU_OVERRIDE }}.tar.gz
     compression: gz
 
   - action: recipe
@@ -15,26 +18,23 @@ actions:
       DEVICE_PACKAGES: "{{ .DEVICE_PACKAGES }}"
       DEVICE_SERVICES: "{{ .DEVICE_SERVICES }}"
 
+  # Install L4T kernel via l4t-debs repo (method: l4t_repo)
+  # Package name confirmed from theofficialgman's repo — verify if build fails.
   - action: run
     chroot: true
     command: |
       export DEBIAN_FRONTEND=noninteractive
       KERNEL_METHOD="{{ .KERNEL_METHOD }}"
-      KERNEL_REPO="{{ .KERNEL_REPO }}"
-      KERNEL_SERIES="{{ .KERNEL_SERIES }}"
-      KERNEL_VERSION_PIN="{{ .KERNEL_VERSION_PIN }}"
 
       case "${KERNEL_METHOD}" in
-      mobian)
-          PKG="linux-image-${KERNEL_SERIES}"
-          if [ -n "${KERNEL_VERSION_PIN}" ]; then
-              apt-get install -y "${PKG}=${KERNEL_VERSION_PIN}-1" 2>/dev/null || \
-              apt-get install -y "$PKG"
-          else
-              apt-get install -y "$PKG"
-          fi
+      l4t_repo)
+          # Kernel already installed via l4t.yaml BSP packages above.
+          # update-initramfs generates the initrd the L4T boot process needs.
+          echo ">>> L4T kernel installed via repo. Generating initramfs..."
+          update-initramfs -c -k all
           ;;
       custom_url)
+          KERNEL_REPO="{{ .KERNEL_REPO }}"
           if [ -z "${KERNEL_REPO}" ]; then
               echo "ERROR: KERNEL_REPO is empty — set it in the device config."
               exit 1
@@ -43,9 +43,9 @@ actions:
           curl -fsSL -o "$TMP_DEB" "${KERNEL_REPO}"
           dpkg -i "$TMP_DEB" || apt-get install -f -y
           rm -f "$TMP_DEB"
+          update-initramfs -c -k all
           ;;
       esac
-      update-initramfs -c -k all
 
   - action: run
     chroot: true
@@ -59,5 +59,5 @@ actions:
     command: apt-get clean
 
   - action: pack
-    file: {{ .DEVICE_IMAGE_LABEL }}-{{ .UBUNTU_RELEASE }}.tar.gz
+    file: {{ .DEVICE_IMAGE_LABEL }}-{{ .DEVICE_UBUNTU_OVERRIDE }}.tar.gz
     compression: gz

@@ -302,8 +302,11 @@ if [ ! -f "$RECIPE_DEVICE" ]; then
     echo ">>>          Check recipes/devices/ for available recipes."
 fi
 
-BASE_TARBALL="base-${UBUNTU_RELEASE}.tar.gz"
-DEVICE_TARBALL="${DEVICE_IMAGE_LABEL}-${UBUNTU_RELEASE}.tar.gz"
+# If device config declares a Ubuntu override (e.g. Switch locks to noble),
+# use it for the base tarball and device tarball names.
+EFFECTIVE_RELEASE="${DEVICE_UBUNTU_OVERRIDE:-${UBUNTU_RELEASE}}"
+BASE_TARBALL="base-${EFFECTIVE_RELEASE}.tar.gz"
+DEVICE_TARBALL="${DEVICE_IMAGE_LABEL}-${EFFECTIVE_RELEASE}.tar.gz"
 
 # -------------------------------------------------------
 # Step 8: Generate run_build.sh
@@ -334,7 +337,8 @@ cat << TEOF
   -t "BOOT_DTB:${BOOT_DTB_SELECTED}" \\
   -t "BOOT_DTB_APPEND:${BOOT_DTB_APPEND}" \\
   -t "FIRMWARE_METHOD:${FIRMWARE_METHOD}" \\
-  -t "FIRMWARE_REPO:${FIRMWARE_REPO}"
+  -t "FIRMWARE_REPO:${FIRMWARE_REPO}" \
+  -t "DEVICE_UBUNTU_OVERRIDE:${EFFECTIVE_RELEASE}"
 TEOF
 }
 
@@ -350,6 +354,7 @@ set -e
 SCRIPT_DIR="${SCRIPT_DIR}"
 BASE_TARBALL="${BASE_TARBALL}"
 DEVICE_TARBALL="${DEVICE_TARBALL}"
+EFFECTIVE_RELEASE="${EFFECTIVE_RELEASE}"  # noble for Switch, UBUNTU_RELEASE for others
 
 # debos resolves recipe-relative paths against $(pwd) when using the none
 # backend. Always cd into the repo root so overlays/scripts/etc resolve correctly
