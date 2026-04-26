@@ -4,7 +4,7 @@
 > Co-developed with Claude (Anthropic) and arkadin91 (reference image, firmware discovery, OTA script logic, cmdline tuning). Build scripts are intentionally readable and modular for long-term maintainability.
 
 ---
-
+# As of RC15, we have transitioned to a Rolling Release, Packages may break, Your phone may crash, refer to the Archives for specific versions if you need stability
 Mobuntu is a toolkit that builds a full Ubuntu ARM64 image for SDM845-based phones and Nintendo Switch devices. The end goal is to support the full range of devices Mobian targets, running a real Ubuntu release with a touch-first mobile interface.
 
 No postmarketOS. No pmbootstrap. Everything is built via a debos recipe pipeline inside a debootstrap rootfs, then sealed and flashed via fastboot or Hekate.
@@ -415,4 +415,4 @@ Special thanks to the Mobian and postmarketOS teams for SDM845 mainline kernel w
 
 ---
 
-*Mobuntu — Ubuntu on everything, with colors!*
+*Mobuntu — Ubuntu on everything.*
