@@ -2,48 +2,49 @@
 # Mobuntu RC15 — stage-firmware-git.sh
 # Runs on HOST (chroot: false). Clones firmware repo into rootfs.
 # Env: FIRMWARE_REPO, DEVICE_CODENAME, DEVICE_BRAND
-# ROOTDIR is set by debos to the rootfs mount point.
+# ROOTDIR    — set by debos to the rootfs mount point
+# ARTIFACTDIR — set by debos to the artifacts dir (= repo root with none backend)
+
 set -e
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LOCAL_FW_ARCHIVE="${SCRIPT_DIR}/../../firmware/${DEVICE_BRAND}-${DEVICE_CODENAME}/firmware.tar.gz"
+# ARTIFACTDIR is the debos artifacts directory — with the none backend this is
+# the working directory debos was invoked from (the Mobuntu repo root).
+# Do NOT use BASH_SOURCE[0] — debos copies scripts to a temp location.
+REPO_ROOT="${ARTIFACTDIR}"
+LOCAL_FW_ARCHIVE="${REPO_ROOT}/firmware/${DEVICE_BRAND}-${DEVICE_CODENAME}/firmware.tar.gz"
 
 FW_STAGED=false
 
-# --- Prompt if local bundle present ---
+# --- Apply local bundle if present (always applied, non-interactive) ---
 if [ -f "$LOCAL_FW_ARCHIVE" ]; then
-    echo ">>> Local firmware bundle detected: $(basename $LOCAL_FW_ARCHIVE)"
-    read -p ">>> Apply local bundle before git clone? [Y/n]: " BUNDLE_CHOICE
-    case "${BUNDLE_CHOICE:-Y}" in
-        [Nn]*) USE_LOCAL_FIRST=false ;;
-        *)     USE_LOCAL_FIRST=true  ;;
-    esac
-    if [ "$USE_LOCAL_FIRST" = "true" ]; then
-        echo ">>> Applying local firmware bundle (base layer)..."
-        tar -xzf "$LOCAL_FW_ARCHIVE" -C "$ROOTDIR/"
-        echo ">>> Local bundle applied."
-        FW_STAGED=true
-    fi
+    echo ">>> Local firmware bundle found: $LOCAL_FW_ARCHIVE"
+    echo ">>> Applying local firmware bundle (base layer)..."
+    tar -xzf "$LOCAL_FW_ARCHIVE" -C "$ROOTDIR/"
+    echo ">>> Local bundle applied."
+    FW_STAGED=true
+else
+    echo ">>> No local firmware bundle at $LOCAL_FW_ARCHIVE"
 fi
 
-# --- Git clone ---
+# --- Git clone (overlay on top of local bundle) ---
 if [ -n "$FIRMWARE_REPO" ]; then
     echo ">>> Cloning: $FIRMWARE_REPO"
     FW_TMP=$(mktemp -d /tmp/fw_XXXX)
-    if git clone --depth=1 "$FIRMWARE_REPO" "$FW_TMP/fw" 2>/dev/null; then
+    if git clone --depth=1 "$FIRMWARE_REPO" "$FW_TMP/fw" 2>&1; then
         cp -r "$FW_TMP/fw/lib/." "$ROOTDIR/lib/"
         [ -d "$FW_TMP/fw/usr" ] && cp -r "$FW_TMP/fw/usr/." "$ROOTDIR/usr/"
         echo ">>> Git firmware staged."
         FW_STAGED=true
     else
-        echo ">>> WARNING: git clone failed."
-        if [ "$FW_STAGED" = "false" ] && [ -f "$LOCAL_FW_ARCHIVE" ]; then
-            echo ">>> Falling back to local archive..."
-            tar -xzf "$LOCAL_FW_ARCHIVE" -C "$ROOTDIR/"
-            FW_STAGED=true
-        fi
+        echo ">>> WARNING: git clone failed — using local bundle only."
     fi
     rm -rf "$FW_TMP"
+fi
+
+# --- Re-apply local bundle post-git (local wins over git overlay) ---
+if [ -f "$LOCAL_FW_ARCHIVE" ] && [ "$FW_STAGED" = "true" ]; then
+    echo ">>> Re-applying local firmware bundle (priority over git)..."
+    tar -xzf "$LOCAL_FW_ARCHIVE" -C "$ROOTDIR/"
 fi
 
 # --- OnePlus 6 fallback (last resort, beryllium only) ---
@@ -68,10 +69,4 @@ if [ "$FW_STAGED" = "false" ]; then
         echo ">>> WARNING: OnePlus6 fallback not found on host."
         echo ">>>   sudo apt install linux-firmware"
     fi
-fi
-
-# --- Re-apply local bundle post-git (wins over git overlay) ---
-if [ -f "$LOCAL_FW_ARCHIVE" ] && [ "$FW_STAGED" = "true" ]; then
-    echo ">>> Re-applying local firmware bundle (priority over git)..."
-    tar -xzf "$LOCAL_FW_ARCHIVE" -C "$ROOTDIR/"
 fi

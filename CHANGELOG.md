@@ -1,55 +1,59 @@
 # Mobuntu — Changelog
 
-> RC7–RC13 assisted by Claude Sonnet 4.6 (Anthropic)
+> RC7–RC16 assisted by Claude Sonnet 4.6 (Anthropic)
 > Previous builds were assisted by Gemini 3.1 Pro (up to RC6)
 > Substantial progress and direction thanks to **arkadin91** — Ubuntu 26.04 Beta reference image, Kupfer lead, sdm845-mainline firmware discovery, OTA script logic, WirePlumber tuning config, and pmaports device file discovery.
 
 ---
 
-## RC15 — "The Debos Update" (Current)
+## RC16 — "The Switch Update" (Current)
 
-**Build System Overhaul**
-- `2_kernel_prep.sh` and `3_rootfs_cooker.sh` retired — replaced by debos YAML recipe pipeline
-- debos handles debootstrap, apt, overlays, chroot scripts, and packing in a reproducible VM
-- `1_preflight.sh` now generates `run_build.sh` (debos invocation with all `-t` flags) instead of calling scripts directly
-- `run_build.sh` is inspectable and re-runnable without going through preflight again
-- `watchdog.sh` updated to wrap `run_build.sh` instead of scripts 2+3
+**Nintendo Switch Support**
+- `l4t.yaml` overhauled — adds theofficialgman's `l4t-debs` apt repository (`https://theofficialgman.github.io/l4t-debs/`) and installs core L4T BSP packages (`nvidia-l4t-core`, `nvidia-l4t-init`, `nvidia-l4t-firmware`, `nvidia-l4t-kernel`, `nvidia-l4t-kernel-dtbs`, `nvidia-l4t-xusb-firmware`, `nvidia-l4t-libvulkan`)
+- `switch-v1.yaml` updated — new `l4t_repo` kernel method, kernel installed via BSP packages rather than direct URL download
+- All four Switch device configs (`nvidia-switch-v1/v2/lite/oled.conf`) — `KERNEL_METHOD` changed from `custom_url` to `l4t_repo`, `DEVICE_UBUNTU_OVERRIDE="noble"` added
+- `DEVICE_UBUNTU_OVERRIDE` — new device config field that forces a specific Ubuntu release for a device, independent of the user's `UBUNTU_RELEASE` selection; Switch locks to `noble` because `l4t-debs` does not yet support `resolute` (26.04)
+- `1_preflight.sh` — `EFFECTIVE_RELEASE` logic: uses `DEVICE_UBUNTU_OVERRIDE` when set, otherwise `UBUNTU_RELEASE`; base and device tarballs named accordingly (`base-noble.tar.gz` for Switch)
+- `joycond` and `nvpmodel` services enabled in `l4t.yaml` when packages present
 
-**Recipe Architecture**
-- `recipes/base.yaml` — debootstrap + apt + UI + user → `base-{release}.tar.gz` (cached)
-- `recipes/qcom.yaml` — included by SDM845 device recipes: Qcom packages, firmware, services, hooks
-- `recipes/l4t.yaml` — included by Switch device recipes: minimal L4T setup
-- `recipes/devices/{codename}.yaml` — per-device: unpack base → overlay → kernel → pack
-- `recipes/scripts/` — shell scripts called by debos `run:` actions
-- `recipes/overlays/` — files copied verbatim into rootfs (51-qcom.conf, qcom-firmware hook, beryllium kernel hooks)
+**fastrpc Integration**
+- `install-fastrpc-device.sh` wired into `qcom.yaml` as action 4 (between firmware staging and Qualcomm packages)
+- `install-fastrpc-device.sh` — falls back to sourcing `build.env` when `DEVICE_BRAND`/`DEVICE_CODENAME` are empty (debos template substitution does not always survive the `environment:` block)
+- DSP binary bundle (`firmware/xiaomi-beryllium/dsp.tar.gz`) staged from MIUI 12 V12.0.3.0 `dsp.img` — 65 files, 9.2 MB compressed
+- `packages/fastrpc/` — `fastrpc-support`, `libfastrpc1`, `libfastrpc-dev` arm64 `.deb` files cross-compiled from source on x86-64 WSL2
 
-**Base Tarball Caching**
-- Base tarball built once per release, reused by all device recipes
-- Device builds skip debootstrap + apt entirely — 40-60% faster for multi-device builds
-- Stale check: base rebuilds if `base.yaml` is newer than the tarball
+**Bug Fixes**
+- `stage-firmware-git.sh` — replaced `BASH_SOURCE[0]`-based path resolution with `$ARTIFACTDIR`; debos copies scripts to a temp location before execution so `SCRIPT_DIR` previously resolved to the debos temp dir rather than the Mobuntu repo root, causing the local `firmware.tar.gz` bundle to never be found
+- `stage-firmware-git.sh` — removed interactive `read -p` prompt; debos `chroot: false` scripts run without a TTY causing the prompt to hang or fall through silently; local bundle now always applied non-interactively when present
+- `install-fastrpc-device.sh` — added `build.env` fallback for `DEVICE_BRAND`/`DEVICE_CODENAME`; debos template substitution in `environment:` blocks does not reliably survive to the script, causing the DSP firmware path to resolve as `firmware//-/dsp.tar.gz`
 
-**fakemachine Backend Detection**
-- Auto-detects KVM → UML → QEMU in that order
-- WSL2: select `none` for `--disable-fakemachine` (requires sudo, works correctly in WSL2)
-- `qemu-system-x86` needed for QEMU backend on x86-64 hosts
-
-**Boot Cmdline Fix (arkadin91)**
-- New: `root=UUID=... earlycon console=tty0 console=ttyMSM0,115200 init=/sbin/init ro loglevel=7`
-- `rw rootwait` → `ro`, `115200n8` → `115200`, `earlycon=qcom_geni,0x00A90000` → `earlycon`
-- `init=/sbin/init` added, `loglevel=7` replaces quiet/splash toggle
-- Boot verbosity prompt removed from `5_seal_rootfs.sh`
-
-**verify_build.sh**
-- Now unpacks device tarball to temp dir for inspection, cleans up after
-- Base cache status check added
-
-**Developer Masterkit**
-- Boot Chain section updated for debos pipeline
-- `run_build.sh` and `recipes/` added to file tree
-- Base tarball cache management section added
-- `FAKEMACHINE_BACKEND` shown in status bar
+**Documentation**
+- `MOBUNTU-DOCS.md` — comprehensive RC15/RC16 documentation covering all scripts, recipes, overlays, device configs, build.env reference, known issues, and new device guide
+- `ROADMAP.md` — release roadmap RC15 through post-1.0 including Chroot Edition concept and A21s status
+- `Package Info.MD` — fastrpc package contents, DSP binary sources, Mobuntu tree layout, install order
+- `How to Build.MD` — reproducible build guide for fastrpc arm64 packages
 
 ---
+
+## RC15.1 LTS — "The Firmware Fix"
+
+**Firmware Directory Fix**
+- `overlays/qcom/` directory created — `qcom.yaml` referenced this overlay but it was never committed, causing `Action recipe failed at stage Verify: stat .../overlays/qcom: no such file or directory`
+- Contents: `usr/share/wireplumber/wireplumber.conf.d/51-qcom.conf` (S16LE/48kHz tuning) and `usr/share/initramfs-tools/hooks/qcom-firmware` (bundles Qcom firmware blobs into initramfs)
+- `overlays/beryllium/` renamed to `overlays/beryllium-hooks/` — `beryllium.yaml` references `overlays/beryllium-hooks`, not `overlays/beryllium`
+- `firmware/xiaomi-beryllium/firmware.tar.gz` — pre-cloned `gitlab.com/sdm845-mainline/firmware-xiaomi-beryllium` bundle; staged by `stage-firmware-git.sh` as local bundle when git clone fails or is unavailable in the build environment
+
+**Build Pipeline Fixes**
+- `run_build.sh` — `cd "${SCRIPT_DIR}"` added at top of generated script; debos with `none` backend resolves overlay/script paths relative to `$(pwd)`, causing failures when script is invoked from outside the repo root
+- `1_preflight.sh` — `systemd-container` added to host dependencies (`apt-get install`); provides `systemd-nspawn` required by debos
+- All scripts — `dos2unix` applied; CRLF line endings from Windows archive extraction caused `exit status 127` on script execution inside debos
+
+**Kernel Package Name Fix**
+- `KERNEL_SERIES` updated from `"sdm845"` to `"6.18-sdm845"` in all four SDM845 device configs — Mobian dropped the unversioned `linux-image-sdm845` metapackage; correct package is now `linux-image-6.18-sdm845`
+- `KERNEL_VERSION_PIN` cleared in beryllium configs — old pin format incompatible with new versioned package naming
+
+**Designation**
+- RC15.1 designated as LTS — Nintendo Switch configs absent, Poco F1 pipeline confirmed building to tarball stage; suitable as a stable base for SDM845-only deployments
 
 ## RC14 — "The Quirks Update"
 

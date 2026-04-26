@@ -1,6 +1,6 @@
 # Mobuntu RC15 Documentation
 
-**RC15 "The Debos Update"**  
+**RC16 "The Switch Update"** | RC15.1 LTS "The Firmware Fix"  
 Ubuntu Linux for SDM845 phones and Nintendo Switch  
 Discord: https://discord.gg/RZV2HveyBg
 
@@ -47,7 +47,9 @@ Discord: https://discord.gg/RZV2HveyBg
 
 Mobuntu is a pure-debootstrap Ubuntu image builder for ARM64 devices. It uses [debos](https://github.com/go-debos/debos) to construct rootfs tarballs inside a sandboxed environment, then seals them into flashable images on the host.
 
-The design has one hard rule: **Ubuntu packages are resolved before Mobian packages are introduced.** This prevents the Mobian staging repository from conflicting with Ubuntu's UI packages — a regression observed with `qcom-support-common` and GTK3 in early 2026 that broke `ubuntu-desktop-minimal` builds.
+The design has one hard rule: **Ubuntu packages are resolved before Mobian packages are introduced.**
+
+**Current releases:** RC16 "The Switch Update" (Nintendo Switch configs, fastrpc integration, firmware staging fixes). RC15.1 LTS "The Firmware Fix" is the stable SDM845-only base — recommended for Poco F1 builds until RC16 confirms Switch booting. This prevents the Mobian staging repository from conflicting with Ubuntu's UI packages — a regression observed with `qcom-support-common` and GTK3 in early 2026 that broke `ubuntu-desktop-minimal` builds.
 
 There is no postmarketOS, pmbootstrap, or any other intermediate distribution. The chain is:
 
@@ -65,10 +67,10 @@ debootstrap  →  debos base recipe  →  debos device recipe  →  raw ext4 ima
 | Xiaomi Poco F1 (EBBG) | `xiaomi-beryllium-ebbg.conf` | SDM845 | mkbootimg | ✅ Working |
 | OnePlus 6 | `oneplus-enchilada.conf` | SDM845 | mkbootimg | 🧪 Untested |
 | OnePlus 6T | `oneplus-fajita.conf` | SDM845 | mkbootimg | 🧪 Untested |
-| Switch V1 (Erista) | `nvidia-switch-v1.conf` | T210 | L4T | ⚠️ KERNEL_REPO empty |
-| Switch V2 (Mariko) | `nvidia-switch-v2.conf` | T210B01 | L4T | ⚠️ KERNEL_REPO empty |
-| Switch Lite | `nvidia-switch-lite.conf` | T210 | L4T | ⚠️ KERNEL_REPO empty |
-| Switch OLED | `nvidia-switch-oled.conf` | T210B01 | L4T | ⚠️ KERNEL_REPO empty |
+| Switch V1 (Erista) | `nvidia-switch-v1.conf` | T210 | L4T | 🧪 RC16 — l4t_repo method, noble base |
+| Switch V2 (Mariko) | `nvidia-switch-v2.conf` | T210B01 | L4T | 🧪 RC16 — l4t_repo method, noble base |
+| Switch Lite | `nvidia-switch-lite.conf` | T210 | L4T | 🧪 RC16 — l4t_repo method, noble base |
+| Switch OLED | `nvidia-switch-oled.conf` | T210B01 | L4T | 🧪 RC16 — l4t_repo method, noble base |
 
 **Beryllium hardware status:**
 
@@ -248,6 +250,10 @@ UI options:
 **Step 6 — build.env**
 
 Writes all collected and sourced variables to `build.env` in the working directory. All subsequent scripts source this file. Do not edit it manually; re-run `1_preflight.sh` to regenerate.
+
+**Step 6b — EFFECTIVE_RELEASE**
+
+If the sourced device config declares `DEVICE_UBUNTU_OVERRIDE` (e.g. Switch devices set `"noble"` because `l4t-debs` does not yet support `resolute`), preflight uses that value as `EFFECTIVE_RELEASE` instead of `UBUNTU_RELEASE`. Base and device tarball names are derived from `EFFECTIVE_RELEASE`, so a Switch build on a `resolute` host will look for `base-noble.tar.gz` and produce `mobuntu-icosa-noble.tar.gz`.
 
 **Step 7 — Recipe path resolution**
 
@@ -569,19 +575,22 @@ Requires=qrtr-ns.service
 
 ### l4t.yaml
 
-**Purpose:** Minimal Nintendo Switch configuration layer. Analogous to `qcom.yaml` but much simpler — Switch devices use standard Ubuntu kernel packages and don't need the Mobian repo or Qualcomm userspace daemons.
+**Purpose:** Nintendo Switch configuration layer. Adds theofficialgman's `l4t-debs` apt repository and installs the NVIDIA Tegra L4T BSP packages required to boot the Switch.
 
 **Required variables:** `DEVICE_CODENAME`, `DEVICE_PACKAGES`, `DEVICE_SERVICES`
+
+**Note:** Always targets `noble` (24.04) — theofficialgman's `l4t-debs` does not yet support `resolute` (26.04). Switch device configs set `DEVICE_UBUNTU_OVERRIDE="noble"` to enforce this regardless of the user's `UBUNTU_RELEASE` selection.
 
 #### Action Sequence
 
 | # | Action | Description |
 |---|--------|-------------|
-| 1 | `apt` | Installs `DEVICE_PACKAGES` if non-empty. |
-| 2 | `run` (chroot) | Enables each service in `DEVICE_SERVICES`. |
-| 3 | `run` (chroot) | `mkdir -p /boot/efi` (required by some initramfs hooks). |
+| 1 | `run` (chroot) | Adds theofficialgman's `l4t-debs` repo GPG key and apt source (`dists/noble/`). Runs `apt-get update`. |
+| 2 | `run` (chroot) | Installs core L4T BSP packages: `nvidia-l4t-core`, `nvidia-l4t-init`, `nvidia-l4t-firmware`, `nvidia-l4t-kernel`, `nvidia-l4t-kernel-dtbs`, `nvidia-l4t-xusb-firmware`, `nvidia-l4t-libvulkan`. Installs `DEVICE_PACKAGES` if non-empty. |
+| 3 | `run` (chroot) | Enables each service in `DEVICE_SERVICES`. |
+| 4 | `run` (chroot) | `mkdir -p /boot/efi`. Enables `joycond` and `nvpmodel` if present. |
 
-Note: `DEVICE_PACKAGES` and `DEVICE_SERVICES` are currently empty in all Switch device configs. The Switch configs are incomplete pending `KERNEL_REPO` population.
+**TODO:** Exact `nvidia-l4t-*` package names need verification against the live `l4t-debs` packages index before a Switch build is attempted. Fetch the index to confirm: `curl https://theofficialgman.github.io/l4t-debs/dists/noble/main/binary-arm64/Packages | grep "^Package:"`
 
 ---
 
@@ -632,15 +641,16 @@ The `-Werror` flag is patched out of both `Makefile` and `libmincrypt/Makefile` 
 
 **Purpose:** Device build recipe for the Nintendo Switch V1. Structurally identical to `beryllium.yaml` but uses `l4t.yaml` instead of `qcom.yaml` and does not build mkbootimg.
 
-**Status:** Incomplete. `KERNEL_REPO` is empty in `nvidia-switch-v1.conf` — the `custom_url` kernel install will fail until a URL is provided.
+**Status:** RC16 — `l4t_repo` kernel method implemented. Kernel is installed by `l4t.yaml` BSP packages; `switch-v1.yaml` only runs `update-initramfs` after. Packs tarball as `mobuntu-icosa-noble.tar.gz` (noble, not resolute).
 
 #### Key Differences from beryllium.yaml
 
 - Uses `recipe: ../l4t.yaml` instead of `../qcom.yaml`
-- No mkbootimg build step
-- No firmware staging script (Switch firmware from `linux-firmware` apt package)
+- No mkbootimg build step — L4T uses lz4-compressed kernel + initrd placed on the SD FAT32 partition
+- No firmware staging script — Switch firmware from `linux-firmware` apt package and L4T BSP
 - No device-specific overlays
-- `custom_url` kernel method requires `KERNEL_REPO` to point to a switchroot L4T kernel `.deb`
+- `l4t_repo` kernel method: kernel installed via `l4t.yaml` BSP packages, no separate URL needed
+- Output tarball uses `DEVICE_UBUNTU_OVERRIDE` (noble) not `UBUNTU_RELEASE`
 
 ---
 
@@ -678,6 +688,10 @@ The `-Werror` flag is patched out of both `Makefile` and `libmincrypt/Makefile` 
 
 The double-application of the local bundle (steps 2 and 5) ensures that device-specific overrides in the local bundle always take precedence over the git HEAD, regardless of what the git repo changed.
 
+#### Path Resolution — ARTIFACTDIR
+
+The script uses `$ARTIFACTDIR` (set by debos to the working directory debos was invoked from) to locate the local firmware bundle — **not** `BASH_SOURCE[0]`. Debos copies scripts to a temp location before execution, so `BASH_SOURCE[0]`-based path resolution always fails. Since `run_build.sh` does `cd "${SCRIPT_DIR}"` before invoking debos, `ARTIFACTDIR` reliably points to the Mobuntu repo root.
+
 #### Local Bundle Path
 
 ```
@@ -688,6 +702,8 @@ Mobuntu/
 ```
 
 For beryllium: `firmware/xiaomi-beryllium/firmware.tar.gz`
+
+The local bundle is always applied non-interactively when present (the earlier interactive `read -p` prompt was removed — debos `chroot: false` scripts run without a TTY). The git clone runs after and overlays on top. The local bundle is then re-applied a second time so it wins over any git changes.
 
 The DSP bundle (`dsp.tar.gz`) lives alongside this and is handled by `install-fastrpc-device.sh`, not this script.
 
@@ -732,9 +748,11 @@ Copies `.deb` files into `$ROOTDIR/tmp/fastrpc-debs/`, then installs them inside
 
 **Service enablement**: Creates symlinks in `multi-user.target.wants/` for `adsprpcd.service` and `cdsprpcd.service` if the service files are present.
 
-#### RC15 Integration Status
+#### RC16 Integration Status
 
-The script is present in `recipes/scripts/` but is not yet called from `qcom.yaml`. To integrate, add this action to `qcom.yaml` after the firmware staging action:
+The script is wired into `qcom.yaml` as action 4 (between firmware staging and Qualcomm packages). The `environment:` block passes `DEVICE_BRAND` and `DEVICE_CODENAME`, but debos template substitution does not always survive this block — the script falls back to sourcing `build.env` from `ARTIFACTDIR` if either variable is empty.
+
+The action in `qcom.yaml`:
 
 ```yaml
 - action: run
@@ -926,21 +944,22 @@ The WirePlumber overlay is at `overlays/enchilada/` (not `overlays/qcom/`) — c
 Nintendo Switch V1 (Erista, T210/icosa). Key fields:
 
 ```
-DEVICE_CODENAME:  icosa
-DEVICE_BRAND:     nvidia
-KERNEL_METHOD:    custom_url
-KERNEL_REPO:      (EMPTY — build will fail)
-KERNEL_SERIES:    tegra210
-BOOT_METHOD:      l4t
-BOOT_DTB:         tegra210-icosa.dtb
-BOOT_DTB_APPEND:  false
-FIRMWARE_METHOD:  apt
-DEVICE_PACKAGES:  (empty)
-DEVICE_SERVICES:  (empty)
-DEVICE_QUIRKS:    l4t_bootfiles firmware_source_online
+DEVICE_CODENAME:         icosa
+DEVICE_BRAND:            nvidia
+KERNEL_METHOD:           l4t_repo
+KERNEL_REPO:             (empty — not used with l4t_repo)
+KERNEL_SERIES:           tegra210
+BOOT_METHOD:             l4t
+BOOT_DTB:                tegra210-icosa.dtb
+BOOT_DTB_APPEND:         false
+FIRMWARE_METHOD:         apt
+DEVICE_PACKAGES:         (empty)
+DEVICE_SERVICES:         (empty)
+DEVICE_QUIRKS:           l4t_bootfiles firmware_source_online
+DEVICE_UBUNTU_OVERRIDE:  noble
 ```
 
-**`KERNEL_REPO` must be set** to the URL of the switchroot L4T kernel `.deb` before building. Without it, the `custom_url` install step in `devices/switch-v1.yaml` will exit 1.
+`KERNEL_METHOD` is now `l4t_repo` — the kernel is installed by `l4t.yaml` via the `l4t-debs` BSP packages. `KERNEL_REPO` is unused and left empty. `DEVICE_UBUNTU_OVERRIDE="noble"` forces the noble base tarball regardless of the user's release selection.
 
 ---
 
@@ -992,6 +1011,7 @@ DEVICE_QUIRKS:    l4t_bootfiles firmware_source_online
 | `FIRMWARE_INSTALL_PATH` | device conf | `/` |
 | `WATCHDOG_ENABLED` | preflight | `false` |
 | `AUTO_SUDO` | preflight | `false` |
+| `DEVICE_UBUNTU_OVERRIDE` | device conf (Switch only) | `noble` |
 | `ROOTFS_UUID` | 5_seal_rootfs.sh | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` |
 
 ---
@@ -1020,9 +1040,12 @@ sed -i 's/KERNEL_VERSION_PIN="6.18.20"/KERNEL_VERSION_PIN="6.18.23"/' \
     devices/xiaomi-beryllium-ebbg.conf
 ```
 
-### Switch KERNEL_REPO empty
+### Switch l4t-debs package names unverified
 
-All four Switch device configs have `KERNEL_REPO=""`. Builds will fail at kernel install. Populate with the URL of the appropriate switchroot L4T Ubuntu kernel `.deb` before attempting a Switch build.
+RC16 switches all Switch builds to `l4t_repo` method using theofficialgman's `l4t-debs` apt repository. The `nvidia-l4t-*` package names in `l4t.yaml` follow the expected naming convention but have not been verified against the live packages index. Before attempting a Switch build, confirm with:
+```bash
+curl https://theofficialgman.github.io/l4t-debs/dists/noble/main/binary-arm64/Packages | grep "^Package:"
+```
 
 ### resolute debootstrap symlink
 
