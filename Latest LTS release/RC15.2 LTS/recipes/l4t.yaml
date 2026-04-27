@@ -1,0 +1,25 @@
+# Mobuntu RC15 — l4t.yaml
+# Included via recipe: action from Switch device recipes.
+
+architecture: arm64
+
+actions:
+{{ if .DEVICE_PACKAGES }}
+  - action: apt
+    update: false
+    packages:
+      - {{ .DEVICE_PACKAGES }}
+{{ end }}
+
+{{ if .DEVICE_SERVICES }}
+  - action: run
+    chroot: true
+    command: |
+      for svc in {{ .DEVICE_SERVICES }}; do
+          systemctl enable "$svc" 2>/dev/null || true
+      done
+{{ end }}
+
+  - action: run
+    chroot: true
+    command: mkdir -p /boot/efi

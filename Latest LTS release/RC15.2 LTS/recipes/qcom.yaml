@@ -1,0 +1,117 @@
+# Mobuntu RC15 — qcom.yaml
+# Included via recipe: action from SDM845 device recipes.
+# Adds Mobian repo HERE — after UI is already installed in base.yaml.
+# This prevents Mobian staging from conflicting with Ubuntu UI packages.
+
+architecture: arm64
+
+actions:
+  # -------------------------------------------------------
+  # 1. Add Mobian repo (SDM845 kernel + Qcom userspace only)
+  # -------------------------------------------------------
+  - action: run
+    chroot: true
+    command: |
+      curl -fsSL https://repo.mobian.org/mobian.gpg -o /etc/apt/trusted.gpg.d/mobian.gpg
+      printf "deb http://repo.mobian.org/ staging main non-free-firmware\n" \
+          > /etc/apt/sources.list.d/mobian.list
+      apt-get update
+
+  # -------------------------------------------------------
+  # 2. Overlay: WirePlumber config + initramfs hook
+  # -------------------------------------------------------
+  - action: overlay
+    source: overlays/qcom
+
+  # -------------------------------------------------------
+  # 3. Firmware staging (git method)
+  # -------------------------------------------------------
+{{ if eq .FIRMWARE_METHOD "git" }}
+  - action: run
+    chroot: false
+    label: Clone firmware repo
+    script: scripts/stage-firmware-git.sh
+    environment:
+      FIRMWARE_REPO: "{{ .FIRMWARE_REPO }}"
+      DEVICE_CODENAME: "{{ .DEVICE_CODENAME }}"
+      DEVICE_BRAND: "{{ .DEVICE_BRAND }}"
+{{ end }}
+
+  # -------------------------------------------------------
+  # 4. fastrpc daemons + DSP binaries
+  # -------------------------------------------------------
+  - action: run
+    chroot: false
+    label: Install fastrpc and DSP firmware
+    script: scripts/install-fastrpc-device.sh
+    environment:
+      DEVICE_BRAND: "{{ .DEVICE_BRAND }}"
+      DEVICE_CODENAME: "{{ .DEVICE_CODENAME }}"
+
+  # -------------------------------------------------------
+  # 5. Qualcomm packages, services, hooks
+  # -------------------------------------------------------
+  - action: run
+    chroot: true
+    command: |
+      export DEBIAN_FRONTEND=noninteractive
+      DEVICE_PACKAGES="{{ .DEVICE_PACKAGES }}"
+      DEVICE_SERVICES="{{ .DEVICE_SERVICES }}"
+      FIRMWARE_METHOD="{{ .FIRMWARE_METHOD }}"
+
+      echo ">>> Installing alsa-ucm-conf..."
+      apt-get install -y alsa-ucm-conf
+
+      if [ -n "${DEVICE_PACKAGES}" ]; then
+          echo ">>> Installing device packages: ${DEVICE_PACKAGES}"
+          apt-get install -y ${DEVICE_PACKAGES}
+      fi
+
+      echo ">>> Fetching Adreno 630 GPU firmware..."
+      KERNEL_ORG="https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain"
+      fetch_fw() {
+          local DEST="$1" FILE="$2"
+          mkdir -p "$DEST"
+          curl -L -f -s -o "$DEST/$(basename $FILE)" "$KERNEL_ORG/$FILE" && \
+              echo "  OK: $FILE" || echo "  WARN: Failed $FILE (non-fatal)"
+          return 0
+      }
+      fetch_fw "/lib/firmware/qcom" "qcom/a630_sqe.fw"
+      fetch_fw "/lib/firmware/qcom" "qcom/a630_gmu.bin"
+      [ "${FIRMWARE_METHOD}" != "git" ] && \
+          fetch_fw "/lib/firmware/qcom/sdm845" "qcom/sdm845/a630_zap.mbn"
+
+      echo ">>> Setting up Qualcomm service ordering..."
+      mkdir -p /etc/systemd/system/pd-mapper.service.d
+      printf '[Unit]\nAfter=qrtr-ns.service\nRequires=qrtr-ns.service\n' \
+          > /etc/systemd/system/pd-mapper.service.d/ordering.conf
+      mkdir -p /etc/systemd/system/rmtfs.service.d
+      printf '[Unit]\nAfter=qrtr-ns.service\nRequires=qrtr-ns.service\n' \
+          > /etc/systemd/system/rmtfs.service.d/ordering.conf
+
+      systemctl enable qrtr-ns   2>/dev/null || true
+      systemctl enable rmtfs     2>/dev/null || true
+      systemctl enable pd-mapper 2>/dev/null || true
+      systemctl enable tqftpserv 2>/dev/null || true
+      systemctl daemon-reload    2>/dev/null || true
+
+      echo ">>> Masking ALSA state services..."
+      systemctl mask alsa-state   2>/dev/null || true
+      systemctl mask alsa-restore 2>/dev/null || true
+
+      [ -f /usr/share/initramfs-tools/hooks/qcom-firmware ] && \
+          chmod +x /usr/share/initramfs-tools/hooks/qcom-firmware
+
+      if [ -n "${DEVICE_SERVICES}" ]; then
+          for svc in ${DEVICE_SERVICES}; do
+              systemctl enable "$svc" 2>/dev/null || true
+          done
+      fi
+
+      [ -f /etc/kernel/postinst.d/zz-qcom-bootimg ] && \
+          chmod +x /etc/kernel/postinst.d/zz-qcom-bootimg
+      [ -f /etc/initramfs/post-update.d/bootimg ] && \
+          chmod +x /etc/initramfs/post-update.d/bootimg
+
+      mkdir -p /boot/efi
+      echo ">>> Qualcomm setup complete."

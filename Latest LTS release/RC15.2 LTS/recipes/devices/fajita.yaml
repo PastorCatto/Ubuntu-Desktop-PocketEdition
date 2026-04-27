@@ -1,0 +1,90 @@
+# Mobuntu RC15 — devices/fajita.yaml
+# OnePlus 6T
+
+architecture: arm64
+
+actions:
+  - action: unpack
+    file: base-{{ .UBUNTU_RELEASE }}.tar.gz
+    compression: gz
+
+  - action: recipe
+    recipe: ../qcom.yaml
+    variables:
+      DEVICE_CODENAME: "{{ .DEVICE_CODENAME }}"
+      DEVICE_BRAND: "{{ .DEVICE_BRAND }}"
+      DEVICE_PACKAGES: "{{ .DEVICE_PACKAGES }}"
+      DEVICE_SERVICES: "{{ .DEVICE_SERVICES }}"
+      DEVICE_QUIRKS: "{{ .DEVICE_QUIRKS }}"
+      FIRMWARE_METHOD: "{{ .FIRMWARE_METHOD }}"
+      FIRMWARE_REPO: "{{ .FIRMWARE_REPO }}"
+
+  # Override 51-qcom.conf — no period-size tuning for enchilada
+  - action: overlay
+    source: ../overlays/enchilada
+
+  - action: overlay
+    source: ../overlays/beryllium-hooks
+    destination: /
+
+  - action: run
+    chroot: true
+    command: |
+      export DEBIAN_FRONTEND=noninteractive
+      KERNEL_METHOD="{{ .KERNEL_METHOD }}"
+      KERNEL_REPO="{{ .KERNEL_REPO }}"
+      KERNEL_SERIES="{{ .KERNEL_SERIES }}"
+      KERNEL_VERSION_PIN="{{ .KERNEL_VERSION_PIN }}"
+
+      case "${KERNEL_METHOD}" in
+      mobian)
+          PKG="linux-image-${KERNEL_SERIES}"
+          if [ -n "${KERNEL_VERSION_PIN}" ]; then
+              apt-get install -y "${PKG}=${KERNEL_VERSION_PIN}-1" 2>/dev/null || \
+              apt-get install -y "${PKG}=${KERNEL_VERSION_PIN}" 2>/dev/null || \
+              apt-get install -y "$PKG"
+          else
+              apt-get install -y "$PKG"
+          fi
+          ;;
+      custom_url)
+          TMP_DEB=$(mktemp /tmp/kernel-XXXX.deb)
+          curl -fsSL -o "$TMP_DEB" "${KERNEL_REPO}"
+          dpkg -i "$TMP_DEB" || apt-get install -f -y
+          rm -f "$TMP_DEB"
+          ;;
+      esac
+
+      apt-get install -y git build-essential
+      rm -rf /tmp/mkbootimg-build
+      git clone --depth=1 https://github.com/osm0sis/mkbootimg /tmp/mkbootimg-build
+      sed -i 's/-Werror//g' /tmp/mkbootimg-build/Makefile
+      sed -i 's/-Werror//g' /tmp/mkbootimg-build/libmincrypt/Makefile
+      make -C /tmp/mkbootimg-build
+      cp /tmp/mkbootimg-build/mkbootimg /usr/local/bin/mkbootimg
+      cp /tmp/mkbootimg-build/unpackbootimg /usr/local/bin/unpackbootimg
+      chmod +x /usr/local/bin/mkbootimg /usr/local/bin/unpackbootimg
+      rm -rf /tmp/mkbootimg-build
+      update-initramfs -c -k all
+
+  - action: run
+    chroot: true
+    command: |
+      chmod +x /etc/kernel/postinst.d/zz-qcom-bootimg 2>/dev/null || true
+      chmod +x /etc/initramfs/post-update.d/bootimg    2>/dev/null || true
+      mkdir -p /boot/efi
+
+  - action: run
+    chroot: true
+    command: |
+      echo "{{ .DEVICE_HOSTNAME }}" > /etc/hostname
+      printf "127.0.0.1   localhost\n127.0.1.1   {{ .DEVICE_HOSTNAME }}\n::1         localhost ip6-localhost ip6-loopback\n" \
+          > /etc/hosts
+
+  - action: run
+    chroot: true
+    command: apt-get clean
+
+  - action: pack
+    file: {{ .DEVICE_IMAGE_LABEL }}-{{ .UBUNTU_RELEASE }}.tar.gz
+    compression: gz

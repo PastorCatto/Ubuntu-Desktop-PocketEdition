@@ -112,6 +112,30 @@ fi
 # -------------------------------------------------------
 case "$BOOT_METHOD" in
 mkbootimg)
+    # Stage firmware blobs into rootfs BEFORE update-initramfs runs so
+    # initramfs-tools firmware hook picks them up naturally.
+    echo ">>> Staging firmware into rootfs before initramfs generation..."
+    # SCRIPT_DIR from build.env — firmware dir is always a sibling of the scripts
+    # Try SCRIPT_DIR first, then fall back to the directory containing build.env
+    FW_BUNDLE="${SCRIPT_DIR}/firmware/${DEVICE_BRAND}-${DEVICE_CODENAME}/firmware.tar.gz"
+    [ -f "$FW_BUNDLE" ] || FW_BUNDLE="$(dirname $(realpath build.env))/firmware/${DEVICE_BRAND}-${DEVICE_CODENAME}/firmware.tar.gz"
+    [ -f "$FW_BUNDLE" ] || FW_BUNDLE="${HOME}/firmware/${DEVICE_BRAND}-${DEVICE_CODENAME}/firmware.tar.gz"
+    if [ -f "$FW_BUNDLE" ]; then
+        sudo tar -xzf "$FW_BUNDLE" -C "$ROOTFS_DIR/" 2>/dev/null || true
+        echo "    Staged: firmware bundle ($(du -sh $FW_BUNDLE | cut -f1))"
+    else
+        echo "    [WARN] No firmware bundle at $FW_BUNDLE"
+    fi
+
+    # Ensure GPU firmware is present — fetch from kernel.org if missing
+    for blob in a630_sqe.fw a630_gmu.bin; do
+        if [ ! -f "$ROOTFS_DIR/lib/firmware/qcom/$blob" ]; then
+            echo "    Fetching $blob from kernel.org..."
+            sudo mkdir -p "$ROOTFS_DIR/lib/firmware/qcom"
+            sudo curl -fsSL -o "$ROOTFS_DIR/lib/firmware/qcom/$blob"                 "https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain/qcom/$blob"                 2>/dev/null && echo "    OK: $blob" || echo "    [WARN] Failed to fetch $blob"
+        fi
+    done
+
     echo ">>> Regenerating initramfs..."
     # For mkbootimg devices debos builds mkbootimg natively inside the rootfs.
     # Re-run initramfs update with firmware in place post-unpack.
