@@ -1,0 +1,167 @@
+# Mobuntu RC15 — base.yaml
+# Ubuntu repos ONLY — Mobian repo is added in qcom.yaml for SDM845 devices.
+# Switch devices never get the Mobian repo.
+# This ensures UI packages resolve cleanly against the Ubuntu release.
+#
+# Required -t flags:
+#   UBUNTU_RELEASE, USERNAME, PASSWORD, UI_NAME, UI_DM, BUILD_COLOR, EXTRA_PKG
+
+architecture: arm64
+
+actions:
+  # -------------------------------------------------------
+  # 1. Bootstrap minimal Ubuntu rootfs
+  # -------------------------------------------------------
+  - action: debootstrap
+    suite: {{ .UBUNTU_RELEASE }}
+    components:
+      - main
+      - restricted
+      - universe
+      - multiverse
+    mirror: http://ports.ubuntu.com/ubuntu-ports
+
+  # -------------------------------------------------------
+  # 2. Ubuntu apt sources only — no Mobian here
+  # -------------------------------------------------------
+  - action: run
+    chroot: true
+    command: |
+      printf "deb http://ports.ubuntu.com/ubuntu-ports/ {{ .UBUNTU_RELEASE }} main restricted universe multiverse\n" > /etc/apt/sources.list
+      printf "deb http://ports.ubuntu.com/ubuntu-ports/ {{ .UBUNTU_RELEASE }}-updates main restricted universe multiverse\n" >> /etc/apt/sources.list
+      printf "deb http://ports.ubuntu.com/ubuntu-ports/ {{ .UBUNTU_RELEASE }}-security main restricted universe multiverse\n" >> /etc/apt/sources.list
+      apt-get update
+      apt-get upgrade -y
+
+  # -------------------------------------------------------
+  # 3. Base system packages (Ubuntu only)
+  # -------------------------------------------------------
+  - action: apt
+    update: false
+    packages:
+      - curl
+      - ca-certificates
+      - gnupg
+      - initramfs-tools
+      - sudo
+      - network-manager
+      - modemmanager
+      - linux-firmware
+      - bluez
+      - pipewire
+      - pipewire-pulse
+      - wireplumber
+      - openssh-server
+      - locales
+      - tzdata
+
+  # -------------------------------------------------------
+  # 4. UI + display manager (Ubuntu repos — clean resolve)
+  # -------------------------------------------------------
+  - action: run
+    chroot: true
+    command: |
+      export DEBIAN_FRONTEND=noninteractive
+      UI_NAME="{{ .UI_NAME }}"
+      UI_DM="{{ .UI_DM }}"
+      BUILD_COLOR="{{ .BUILD_COLOR }}"
+      echo ">>> Installing UI: ${UI_NAME} (DM: ${UI_DM})"
+      case "${UI_NAME}" in
+      phosh)
+          apt-get install -y phosh greetd
+          apt-get install -y squeekboard 2>/dev/null || \
+              apt-get install -y phosh-osk-stub 2>/dev/null || \
+              echo "WARNING: No OSK available"
+          useradd -r -m -G video,render,input,audio greeter 2>/dev/null || \
+              usermod -aG video,render,input,audio greeter 2>/dev/null || true
+          mkdir -p /etc/greetd
+          printf "[terminal]\nvt = 1\n\n[default_session]\ncommand = \"/usr/bin/phosh\"\nuser = \"greeter\"\n" \
+              > /etc/greetd/config.toml
+          systemctl enable greetd
+          ;;
+      ubuntu-desktop-minimal)
+          apt-get install -y ubuntu-desktop-minimal
+          systemctl enable gdm3
+          mkdir -p /etc/dconf/db/local.d
+          printf "[org/gnome/desktop/interface]\naccent-color='%s'\n\n[org/gnome/nautilus/desktop]\nvolumes-visible=false\n" \
+              "${BUILD_COLOR}" > /etc/dconf/db/local.d/01-mobuntu-theme
+          dconf update 2>/dev/null || true
+          ;;
+      unity)
+          apt-get install -y ubuntu-unity-desktop
+          systemctl enable lightdm
+          ;;
+      plasma-desktop)
+          apt-get install -y kde-plasma-desktop
+          systemctl enable sddm
+          ;;
+      plasma-mobile)
+          apt-get install -y plasma-mobile maliit-keyboard
+          systemctl enable sddm
+          ;;
+      lomiri)
+          apt-get install -y lomiri squeekboard greetd
+          useradd -r -m -G video,render,input,audio greeter 2>/dev/null || \
+              usermod -aG video,render,input,audio greeter 2>/dev/null || true
+          mkdir -p /etc/greetd
+          printf "[terminal]\nvt = 1\n\n[default_session]\ncommand = \"lomiri\"\nuser = \"greeter\"\n" \
+              > /etc/greetd/config.toml
+          systemctl enable greetd
+          ;;
+      *)
+          echo "WARNING: Unknown UI '${UI_NAME}', falling back to phosh"
+          apt-get install -y phosh greetd
+          apt-get install -y squeekboard 2>/dev/null || \
+              apt-get install -y phosh-osk-stub 2>/dev/null || true
+          useradd -r -m -G video,render,input,audio greeter 2>/dev/null || \
+              usermod -aG video,render,input,audio greeter 2>/dev/null || true
+          mkdir -p /etc/greetd
+          printf "[terminal]\nvt = 1\n\n[default_session]\ncommand = \"/usr/bin/phosh\"\nuser = \"greeter\"\n" \
+              > /etc/greetd/config.toml
+          systemctl enable greetd
+          ;;
+      esac
+      for dm in gdm3 lightdm sddm greetd; do
+          [ "$dm" != "${UI_DM}" ] && systemctl disable "$dm" 2>/dev/null || true
+      done
+
+  # -------------------------------------------------------
+  # 5. Extra packages
+  # -------------------------------------------------------
+{{ if .EXTRA_PKG }}
+  - action: run
+    chroot: true
+    command: apt-get install -y {{ .EXTRA_PKG }}
+{{ end }}
+
+  # -------------------------------------------------------
+  # 6. User account
+  # -------------------------------------------------------
+  - action: run
+    chroot: true
+    command: |
+      useradd -m -s /bin/bash -G sudo,video,audio,netdev,dialout "{{ .USERNAME }}" || true
+      echo "{{ .USERNAME }}:{{ .PASSWORD }}" | chpasswd
+      echo "{{ .USERNAME }} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/mobuntu-user
+      chmod 0440 /etc/sudoers.d/mobuntu-user
+
+  # -------------------------------------------------------
+  # 7. Stub hostname (overridden by device recipe)
+  # -------------------------------------------------------
+  - action: run
+    chroot: true
+    command: echo "mobuntu" > /etc/hostname
+
+  # -------------------------------------------------------
+  # 8. Apt cleanup
+  # -------------------------------------------------------
+  - action: run
+    chroot: true
+    command: apt-get clean
+
+  # -------------------------------------------------------
+  # 9. Pack base tarball
+  # -------------------------------------------------------
+  - action: pack
+    file: base-{{ .UBUNTU_RELEASE }}.tar.gz
+    compression: gz

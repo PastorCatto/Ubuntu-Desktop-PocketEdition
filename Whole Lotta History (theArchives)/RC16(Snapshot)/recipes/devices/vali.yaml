@@ -1,0 +1,63 @@
+# Mobuntu RC15 — devices/switch-lite.yaml
+# Nintendo Switch Lite (T210B01, vali)
+
+architecture: arm64
+
+actions:
+  - action: unpack
+    file: base-{{ .UBUNTU_RELEASE }}.tar.gz
+    compression: gz
+
+  - action: recipe
+    recipe: ../l4t.yaml
+    variables:
+      DEVICE_CODENAME: "{{ .DEVICE_CODENAME }}"
+      DEVICE_PACKAGES: "{{ .DEVICE_PACKAGES }}"
+      DEVICE_SERVICES: "{{ .DEVICE_SERVICES }}"
+
+  - action: run
+    chroot: true
+    command: |
+      export DEBIAN_FRONTEND=noninteractive
+      KERNEL_METHOD="{{ .KERNEL_METHOD }}"
+      KERNEL_REPO="{{ .KERNEL_REPO }}"
+      KERNEL_SERIES="{{ .KERNEL_SERIES }}"
+      KERNEL_VERSION_PIN="{{ .KERNEL_VERSION_PIN }}"
+
+      case "${KERNEL_METHOD}" in
+      mobian)
+          PKG="linux-image-${KERNEL_SERIES}"
+          if [ -n "${KERNEL_VERSION_PIN}" ]; then
+              apt-get install -y "${PKG}=${KERNEL_VERSION_PIN}-1" 2>/dev/null || \
+              apt-get install -y "$PKG"
+          else
+              apt-get install -y "$PKG"
+          fi
+          ;;
+      custom_url)
+          if [ -z "${KERNEL_REPO}" ]; then
+              echo "ERROR: KERNEL_REPO is empty — set it in the device config."
+              exit 1
+          fi
+          TMP_DEB=$(mktemp /tmp/kernel-XXXX.deb)
+          curl -fsSL -o "$TMP_DEB" "${KERNEL_REPO}"
+          dpkg -i "$TMP_DEB" || apt-get install -f -y
+          rm -f "$TMP_DEB"
+          ;;
+      esac
+      update-initramfs -c -k all
+
+  - action: run
+    chroot: true
+    command: |
+      echo "{{ .DEVICE_HOSTNAME }}" > /etc/hostname
+      printf "127.0.0.1   localhost\n127.0.1.1   {{ .DEVICE_HOSTNAME }}\n::1         localhost ip6-localhost ip6-loopback\n" \
+          > /etc/hosts
+
+  - action: run
+    chroot: true
+    command: apt-get clean
+
+  - action: pack
+    file: {{ .DEVICE_IMAGE_LABEL }}-{{ .UBUNTU_RELEASE }}.tar.gz
+    compression: gz

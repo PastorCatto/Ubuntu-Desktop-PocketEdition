@@ -1,5 +1,9 @@
-# Mobuntu RC15 — devices/beryllium.yaml
+# Mobuntu RC16a — devices/beryllium.yaml
 # Xiaomi Poco F1 (Tianma + EBBG)
+#
+# RC16a changes vs RC15:
+#   - FIRMWARE_METHOD and FIRMWARE_REPO vars removed (stage-firmware-git.sh retired).
+#   - DEVICE_QUIRKS removed (was only used by dead setup-qcom.sh).
 
 architecture: arm64
 
@@ -15,9 +19,6 @@ actions:
       DEVICE_BRAND: "{{ .DEVICE_BRAND }}"
       DEVICE_PACKAGES: "{{ .DEVICE_PACKAGES }}"
       DEVICE_SERVICES: "{{ .DEVICE_SERVICES }}"
-      DEVICE_QUIRKS: "{{ .DEVICE_QUIRKS }}"
-      FIRMWARE_METHOD: "{{ .FIRMWARE_METHOD }}"
-      FIRMWARE_REPO: "{{ .FIRMWARE_REPO }}"
 
   - action: overlay
     source: ../overlays/beryllium-hooks

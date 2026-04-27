@@ -1,30 +1,27 @@
 #!/bin/bash
-# Mobuntu RC15 — install-fastrpc-device.sh
-# Runs INSIDE the arm64 chroot during debos device build.
+# Mobuntu RC16a — install-fastrpc-device.sh
+# Runs on HOST (chroot: false) during debos device build.
 # Installs fastrpc-support + DSP binaries into the rootfs.
 #
 # Called from qcom.yaml as a debos 'run' action:
 #
 #   - action: run
-#     description: Install fastrpc and DSP firmware
 #     chroot: false
-#     script: recipes/scripts/install-fastrpc-device.sh
+#     script: scripts/install-fastrpc-device.sh
 #
-# Env vars set by debos (via -t flags from run_build.sh):
-#   ROOTDIR     — rootfs mount point
-#   DEVICE_BRAND, DEVICE_CODENAME
+# Env vars set by debos:
+#   ROOTDIR      — rootfs mount point (set by debos)
+#   ARTIFACTDIR  — repo root when using the none backend (set by debos)
+#   DEVICE_BRAND, DEVICE_CODENAME — set via environment: in qcom.yaml
+#
+# RC16a fix: BASH_SOURCE[0] removed. debos copies scripts to a temp
+# location before executing them, so BASH_SOURCE[0] resolves to the
+# temp path, not the repo root. Use $ARTIFACTDIR instead — debos sets
+# this to the working directory (repo root) for the none backend.
 
 set -e
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="${SCRIPT_DIR}/../.."
-
-# Debos template substitution doesn't always survive the environment: block.
-# Fall back to sourcing build.env from the repo root if vars are empty.
-if [ -z "${DEVICE_BRAND}" ] || [ -z "${DEVICE_CODENAME}" ]; then
-    BUILDENV="${REPO_ROOT}/build.env"
-    [ -f "${BUILDENV}" ] && source "${BUILDENV}" || true
-fi
+REPO_ROOT="${ARTIFACTDIR}"
 
 FW_DIR="${REPO_ROOT}/firmware/${DEVICE_BRAND}-${DEVICE_CODENAME}"
 PKG_DIR="${REPO_ROOT}/packages/fastrpc"
@@ -34,7 +31,13 @@ info()  { echo -e "${BLUE}[INFO]${NC} $*"; }
 ok()    { echo -e "${GREEN}[ OK ]${NC} $*"; }
 warn()  { echo -e "${YELLOW}[WARN]${NC} $*"; }
 
-# ── Stage DSP binaries ─────────────────────────────────────────────────────────
+# Sanity check — if ARTIFACTDIR is empty debos wasn't set up correctly
+if [ -z "${ARTIFACTDIR}" ]; then
+    echo "ERROR: ARTIFACTDIR is not set. Is this running under debos?"
+    exit 1
+fi
+
+# ── Stage DSP binaries ────────────────────────────────────────────────────────
 
 if [ -f "${FW_DIR}/dsp.tar.gz" ]; then
     info "Staging DSP binaries into rootfs..."
@@ -44,7 +47,7 @@ else
     warn "No dsp.tar.gz found at ${FW_DIR}/dsp.tar.gz — SLPI sensors will not work"
 fi
 
-# ── Stage rfsa skel libs ───────────────────────────────────────────────────────
+# ── Stage rfsa skel libs ──────────────────────────────────────────────────────
 
 if [ -f "${FW_DIR}/rfsa.tar.gz" ]; then
     info "Staging rfsa/adsp skel libs..."
@@ -52,16 +55,14 @@ if [ -f "${FW_DIR}/rfsa.tar.gz" ]; then
     ok "rfsa skel libs staged"
 fi
 
-# ── Install fastrpc .deb packages ─────────────────────────────────────────────
+# ── Install fastrpc .deb packages ────────────────────────────────────────────
 
 if [ -d "${PKG_DIR}" ] && ls "${PKG_DIR}"/*.deb > /dev/null 2>&1; then
     info "Installing fastrpc packages..."
 
-    # Copy debs into rootfs tmp
     mkdir -p "${ROOTDIR}/tmp/fastrpc-debs"
     cp "${PKG_DIR}"/*.deb "${ROOTDIR}/tmp/fastrpc-debs/"
 
-    # Install inside chroot
     chroot "${ROOTDIR}" /bin/bash -c "
         dpkg -i /tmp/fastrpc-debs/libfastrpc1_*.deb 2>/dev/null || true
         dpkg -i /tmp/fastrpc-debs/fastrpc-support_*.deb 2>/dev/null || true
@@ -74,7 +75,7 @@ else
     warn "Run build-fastrpc-arm64.sh and stage-dsp-firmware.sh first"
 fi
 
-# ── Install adsprpcd udev rules if not already from deb ───────────────────────
+# ── Install fastrpc udev rules if not already from deb ───────────────────────
 
 UDEV_RULES="${ROOTDIR}/usr/lib/udev/rules.d/60-fastrpc-support.rules"
 if [ ! -f "${UDEV_RULES}" ]; then
@@ -90,7 +91,7 @@ KERNEL=="adsprpc-smd-secure", MODE="0660", GROUP="fastrpc"
 UDEV
 fi
 
-# ── Enable adsprpcd and cdsprpcd services ──────────────────────────────────────
+# ── Enable adsprpcd and cdsprpcd services ─────────────────────────────────────
 
 for svc in adsprpcd cdsprpcd; do
     SVC_FILE="${ROOTDIR}/usr/lib/systemd/system/${svc}.service"
