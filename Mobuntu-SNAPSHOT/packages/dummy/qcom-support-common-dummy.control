@@ -1,0 +1,19 @@
+Section: misc
+Priority: optional
+Standards-Version: 3.9.2
+
+Package: qcom-support-common
+Version: 99.0-mobuntu1
+Architecture: all
+Maintainer: Mobuntu Build <build@mobuntu>
+Depends: hexagonrpcd
+Description: Dummy qcom-support-common — BLOCKED by Mobuntu RC16a
+ Satisfies the sdm845-support dependency chain without installing
+ the real qcom-support-common package, which pulls in hexagonrpcd.
+ .
+ See hexagonrpcd-dummy for rationale. This dummy satisfies the
+ intermediate dependency so sdm845-support installs cleanly while
+ hexagonrpcd remains blocked.
+ .
+ DO NOT REPLACE with the real qcom-support-common package.
+ The hold set by build is intentional.

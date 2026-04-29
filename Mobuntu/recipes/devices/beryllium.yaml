@@ -1,9 +1,15 @@
-# Mobuntu RC16a — devices/beryllium.yaml
+# Mobuntu RC17 — devices/beryllium.yaml
 # Xiaomi Poco F1 (Tianma + EBBG)
 #
-# RC16a changes vs RC15:
-#   - FIRMWARE_METHOD and FIRMWARE_REPO vars removed (stage-firmware-git.sh retired).
-#   - DEVICE_QUIRKS removed (was only used by dead setup-qcom.sh).
+# RC17 changes vs RC16a:
+#   - KERNEL_METHOD=local-deb: kernel + firmware installed from files/*.deb
+#   - mkbootimg ARM64 compile removed; abootimg used instead (installed via apt)
+#   - firmware deb installed BEFORE kernel deb so initramfs picks it up
+#   - mobuntu-arkadin overlay applied: wireplumber, udev, grow-rootfs, firmware hook
+#   - alsa-ucm-conf patched from Mobian repo (audio fix)
+#   - alsa-state/alsa-restore masked (audio fix)
+#   - grow-rootfs.service enabled (first-boot partition resize)
+#   - hexagonrpcd installed and enabled
 
 architecture: arm64
 
@@ -20,9 +26,20 @@ actions:
       DEVICE_PACKAGES: "{{ .DEVICE_PACKAGES }}"
       DEVICE_SERVICES: "{{ .DEVICE_SERVICES }}"
 
+  # Arkadin91-derived overlays: firmware hook, wireplumber, udev, grow-rootfs
+  - action: overlay
+    source: ../overlays/mobuntu-arkadin
+    destination: /
+
+  # Existing beryllium-specific hooks (zz-qcom-bootimg, post-update.d/bootimg)
   - action: overlay
     source: ../overlays/beryllium-hooks
     destination: /
+
+  # Stage kernel + firmware debs into /opt for dpkg install below
+  - action: overlay
+    source: ../../files
+    destination: /opt/
 
   - action: run
     chroot: true
@@ -35,6 +52,25 @@ actions:
 
       echo ">>> Installing kernel (method: ${KERNEL_METHOD}, series: ${KERNEL_SERIES})"
       case "${KERNEL_METHOD}" in
+
+      local-deb)
+          # Install firmware FIRST so update-initramfs picks it up via the
+          # qcom-firmware initramfs hook when the kernel postinst runs.
+          echo ">>> Installing firmware deb..."
+          dpkg -i --force-overwrite /opt/linux-firmware-*.deb
+
+          # Kernel postinst triggers update-initramfs automatically.
+          # Firmware is already staged, so initrd will contain it.
+          echo ">>> Installing kernel deb (triggers initramfs rebuild)..."
+          dpkg -i --force-overwrite /opt/linux-image-*.deb
+
+          echo ">>> Installing kernel headers..."
+          dpkg -i --force-overwrite /opt/linux-headers-*.deb
+
+          command -v abootimg >/dev/null || \
+              { echo "ERROR: abootimg not found — add it to DEVICE_PACKAGES"; exit 1; }
+          ;;
+
       mobian)
           PKG="linux-image-${KERNEL_SERIES}"
           if [ -n "${KERNEL_VERSION_PIN}" ]; then
@@ -44,7 +80,23 @@ actions:
           else
               apt-get install -y "$PKG"
           fi
+
+          echo ">>> Building mkbootimg natively for ARM64..."
+          apt-get install -y git build-essential
+          rm -rf /tmp/mkbootimg-build
+          git clone --depth=1 https://github.com/osm0sis/mkbootimg /tmp/mkbootimg-build
+          sed -i 's/-Werror//g' /tmp/mkbootimg-build/Makefile
+          sed -i 's/-Werror//g' /tmp/mkbootimg-build/libmincrypt/Makefile
+          make -C /tmp/mkbootimg-build
+          cp /tmp/mkbootimg-build/mkbootimg /usr/local/bin/mkbootimg
+          cp /tmp/mkbootimg-build/unpackbootimg /usr/local/bin/unpackbootimg
+          chmod +x /usr/local/bin/mkbootimg /usr/local/bin/unpackbootimg
+          rm -rf /tmp/mkbootimg-build
+
+          echo ">>> Rebuilding initramfs..."
+          update-initramfs -c -k all
           ;;
+
       custom_url)
           TMP_DEB=$(mktemp /tmp/kernel-XXXX.deb)
           curl -fsSL -o "$TMP_DEB" "${KERNEL_REPO}"
@@ -53,21 +105,31 @@ actions:
           ;;
       esac
 
-      echo ">>> Building mkbootimg natively for ARM64..."
-      apt-get install -y git build-essential
-      rm -rf /tmp/mkbootimg-build
-      git clone --depth=1 https://github.com/osm0sis/mkbootimg /tmp/mkbootimg-build
-      sed -i 's/-Werror//g' /tmp/mkbootimg-build/Makefile
-      sed -i 's/-Werror//g' /tmp/mkbootimg-build/libmincrypt/Makefile
-      make -C /tmp/mkbootimg-build
-      cp /tmp/mkbootimg-build/mkbootimg /usr/local/bin/mkbootimg
-      cp /tmp/mkbootimg-build/unpackbootimg /usr/local/bin/unpackbootimg
-      chmod +x /usr/local/bin/mkbootimg /usr/local/bin/unpackbootimg
-      rm -rf /tmp/mkbootimg-build
+  # Audio fix: Mobian alsa-ucm-conf + service masking
+  - action: run
+    chroot: true
+    command: |
+      export DEBIAN_FRONTEND=noninteractive
+      echo ">>> Patching alsa-ucm-conf with Mobian SDM845 mappings..."
+      wget -q --timeout=30 \
+          "https://repo.mobian.org/pool/main/a/alsa-ucm-conf/alsa-ucm-conf_1.2.15.3-1mobian3_all.deb" \
+          -O /tmp/alsa-ucm-conf-mobian.deb && \
+      dpkg -i --force-overwrite /tmp/alsa-ucm-conf-mobian.deb && \
+      rm /tmp/alsa-ucm-conf-mobian.deb || \
+      echo "[WARN] alsa-ucm-conf mobian patch failed"
 
-      echo ">>> Updating initramfs..."
-      update-initramfs -c -k all
+      echo ">>> Masking conflicting alsa services..."
+      systemctl mask alsa-state alsa-restore
 
+  # Services
+  - action: run
+    chroot: true
+    command: |
+      systemctl enable grow-rootfs.service
+      systemctl set-default graphical.target
+      rm -f /etc/kernel/postinst.d/dkms
+
+  # Bootimg hook permissions
   - action: run
     chroot: true
     command: |
@@ -75,6 +137,7 @@ actions:
       chmod +x /etc/initramfs/post-update.d/bootimg    2>/dev/null || true
       mkdir -p /boot/efi
 
+  # Hostname
   - action: run
     chroot: true
     command: |

@@ -4,7 +4,7 @@ Standards-Version: 3.9.2
 
 Package: hexagonrpcd
 Version: 99.0-mobuntu1
-Architecture: arm64
+Architecture: all
 Maintainer: Mobuntu Build <build@mobuntu>
 Description: Dummy hexagonrpcd — BLOCKED by Mobuntu RC16a
  Satisfies the sdm845-support dependency chain without installing

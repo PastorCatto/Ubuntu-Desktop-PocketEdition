@@ -1,0 +1,5 @@
+Components: main non-free-firmware
+Signed-By: /var/lib/extrepo/keys/mobian.asc
+Suites: staging
+Types: deb
+Uris: http://repo.mobian.org/

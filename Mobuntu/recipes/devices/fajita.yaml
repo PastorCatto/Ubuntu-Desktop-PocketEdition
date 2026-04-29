@@ -1,5 +1,10 @@
-# Mobuntu RC15 — devices/fajita.yaml
+# Mobuntu RC16a — devices/fajita.yaml
 # OnePlus 6T
+#
+# RC16a changes vs RC15:
+#   - DEVICE_QUIRKS, FIRMWARE_METHOD, FIRMWARE_REPO removed from qcom.yaml vars
+#     (dead since setup-qcom.sh was retired in RC16a).
+# Note: fajita shares enchilada's firmware bundle and audio overlay.
 
 architecture: arm64
 
@@ -15,11 +20,8 @@ actions:
       DEVICE_BRAND: "{{ .DEVICE_BRAND }}"
       DEVICE_PACKAGES: "{{ .DEVICE_PACKAGES }}"
       DEVICE_SERVICES: "{{ .DEVICE_SERVICES }}"
-      DEVICE_QUIRKS: "{{ .DEVICE_QUIRKS }}"
-      FIRMWARE_METHOD: "{{ .FIRMWARE_METHOD }}"
-      FIRMWARE_REPO: "{{ .FIRMWARE_REPO }}"
 
-  # Override 51-qcom.conf — no period-size tuning for enchilada
+  # Shares enchilada's 51-qcom.conf override
   - action: overlay
     source: ../overlays/enchilada
 
@@ -36,6 +38,7 @@ actions:
       KERNEL_SERIES="{{ .KERNEL_SERIES }}"
       KERNEL_VERSION_PIN="{{ .KERNEL_VERSION_PIN }}"
 
+      echo ">>> Installing kernel (method: ${KERNEL_METHOD}, series: ${KERNEL_SERIES})"
       case "${KERNEL_METHOD}" in
       mobian)
           PKG="linux-image-${KERNEL_SERIES}"
@@ -55,6 +58,7 @@ actions:
           ;;
       esac
 
+      echo ">>> Building mkbootimg natively for ARM64..."
       apt-get install -y git build-essential
       rm -rf /tmp/mkbootimg-build
       git clone --depth=1 https://github.com/osm0sis/mkbootimg /tmp/mkbootimg-build
@@ -65,6 +69,8 @@ actions:
       cp /tmp/mkbootimg-build/unpackbootimg /usr/local/bin/unpackbootimg
       chmod +x /usr/local/bin/mkbootimg /usr/local/bin/unpackbootimg
       rm -rf /tmp/mkbootimg-build
+
+      echo ">>> Updating initramfs..."
       update-initramfs -c -k all
 
   - action: run

@@ -1,0 +1,20 @@
+Section: misc
+Priority: optional
+Standards-Version: 3.9.2
+
+Package: hexagonrpcd
+Version: 99.0-mobuntu1
+Architecture: all
+Maintainer: Mobuntu Build <build@mobuntu>
+Description: Dummy hexagonrpcd — BLOCKED by Mobuntu RC16a
+ Satisfies the sdm845-support dependency chain without installing
+ the hexagonrpcd daemon.
+ .
+ hexagonrpcd causes ADSP crash loops on beryllium when
+ /var/lib/droid-juicer/sensors/ is absent (vanilla builds without
+ vendor extraction). Mobuntu ships working audio via sdm845-support
+ UCM configs, the 51-qcom.conf WirePlumber tuning, and correct
+ rmtfs/pd-mapper service ordering — no hexagonrpcd required.
+ .
+ DO NOT REPLACE with the real hexagonrpcd package.
+ The hold set by build is intentional.

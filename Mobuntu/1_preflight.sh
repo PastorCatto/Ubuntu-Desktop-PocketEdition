@@ -1,8 +1,8 @@
 #!/bin/bash
-# Mobuntu — RC16a
+# Mobuntu — RC17
 set -e
 echo "======================================================="
-echo "   Mobuntu — RC16a Pre-Flight & Build Setup"
+echo "   Mobuntu — RC17 Pre-Flight & Build Setup"
 echo "======================================================="
 
 # -------------------------------------------------------
@@ -72,6 +72,7 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
     xz-utils gzip zip ca-certificates rsync \
     dosfstools uuid-runtime \
     android-sdk-libsparse-utils \
+    abootimg \
     lz4 qemu-system-aarch64 \
     qemu-user-static binfmt-support \
     systemd-container \
@@ -95,18 +96,11 @@ if [ "$FAKEMACHINE_BACKEND" = "uml" ]; then
     sudo apt-get install -y user-mode-linux
 fi
 
-# Host-side mkbootimg (for 5_seal_rootfs.sh)
-if ! command -v mkbootimg &>/dev/null; then
-    echo ">>> Building mkbootimg (host)..."
-    sudo apt-get install -y gcc make
-    sudo apt-get remove -y mkbootimg 2>/dev/null || true
-    git clone --depth=1 https://github.com/osm0sis/mkbootimg /tmp/mkbootimg-tool
-    sed -i 's/-Werror//g' /tmp/mkbootimg-tool/libmincrypt/Makefile
-    make -C /tmp/mkbootimg-tool CFLAGS="-ffunction-sections -O3"
-    sudo cp /tmp/mkbootimg-tool/mkbootimg /usr/local/bin/mkbootimg
-    sudo chmod +x /usr/local/bin/mkbootimg
-    rm -rf /tmp/mkbootimg-tool
-fi
+# abootimg is installed via apt above (used by 5_seal_rootfs.sh for local-deb builds).
+# mkbootimg (osm0sis) is only needed inside the ARM64 chroot for mobian-method builds —
+# beryllium.yaml compiles it natively for ARM64 when KERNEL_METHOD=mobian.
+# No host-side mkbootimg build needed for RC17+.
+echo ">>> abootimg: $(abootimg 2>&1 | head -1 | grep -oP 'version \S+' || echo 'installed')"
 
 # Ensure resolute suite known to debootstrap
 if [ ! -f /usr/share/debootstrap/scripts/resolute ]; then
@@ -121,7 +115,9 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DUMMY_DIR="${SCRIPT_DIR}/packages/dummy"
 DUMMY_MISSING=false
 
-for pkg in hexagonrpcd qcom-support-common; do
+# RC17: hexagonrpcd is now installed directly via DEVICE_PACKAGES — no dummy needed.
+# qcom-support-common is still blocked (pulls in conflicting dependencies).
+for pkg in qcom-support-common; do
     if ! ls "${DUMMY_DIR}/${pkg}_"*.deb > /dev/null 2>&1; then
         echo ">>> [WARN] Missing dummy .deb: ${pkg}"
         DUMMY_MISSING=true
@@ -132,8 +128,8 @@ if [ "$DUMMY_MISSING" = "true" ]; then
     echo ""
     echo "======================================================="
     echo "  Dummy packages not found in packages/dummy/"
-    echo "  These block hexagonrpcd from being pulled in by"
-    echo "  sdm845-support during the debos build."
+    echo "  qcom-support-common needs a dummy to block its"
+    echo "  conflicting dependencies from being installed."
     echo "======================================================="
     read -p "Build dummy packages now? [Y/n]: " BUILD_DUMMIES
     if [[ ! "$BUILD_DUMMIES" =~ ^[Nn]$ ]]; then
@@ -307,6 +303,7 @@ BOOT_DTB_SELECTED="${BOOT_DTB_SELECTED}"
 DEVICE_IMAGE_LABEL="${DEVICE_IMAGE_LABEL}"
 DEVICE_PACKAGES="${DEVICE_PACKAGES}"
 DEVICE_SERVICES="${DEVICE_SERVICES}"
+DEVICE_MASKED_SERVICES="${DEVICE_MASKED_SERVICES:-}"
 
 UI_NAME="${UI_NAME}"
 UI_DM="${UI_DM}"
@@ -337,6 +334,34 @@ if [ ! -f "$RECIPE_DEVICE" ]; then
     echo ">>>          Check recipes/devices/ for available recipes."
 fi
 
+# -------------------------------------------------------
+# Step 7b: Local-deb file check
+# -------------------------------------------------------
+if [ "${KERNEL_METHOD}" = "local-deb" ]; then
+    echo ">>> KERNEL_METHOD=local-deb — checking files/ for required debs..."
+    FILES_DIR="${SCRIPT_DIR}/files"
+    DEBS_OK=true
+    for pattern in "linux-image-*.deb" "linux-firmware-*.deb"; do
+        if ! ls "${FILES_DIR}/"${pattern} > /dev/null 2>&1; then
+            echo ">>> [WARN] Missing in files/: ${pattern}"
+            DEBS_OK=false
+        else
+            echo ">>> [OK]   $(ls ${FILES_DIR}/${pattern} | xargs -I{} basename {})"
+        fi
+    done
+    if [ "$DEBS_OK" = "false" ]; then
+        echo ""
+        echo "======================================================="
+        echo "  ERROR: Required .deb files missing from files/"
+        echo "  Needed:"
+        echo "    files/linux-image-<version>-sdm845.deb"
+        echo "    files/linux-firmware-<device>-sdm845.deb"
+        echo "  Get from arkadin91's releases or build them yourself."
+        echo "======================================================="
+        exit 1
+    fi
+fi
+
 # If device config declares a Ubuntu override (e.g. Switch locks to noble),
 # use it for the base tarball and device tarball names.
 EFFECTIVE_RELEASE="${DEVICE_UBUNTU_OVERRIDE:-${UBUNTU_RELEASE}}"
@@ -359,6 +384,7 @@ cat << TEOF
   -t "DEVICE_IMAGE_LABEL:${DEVICE_IMAGE_LABEL}" \\
   -t "DEVICE_PACKAGES:${DEVICE_PACKAGES}" \\
   -t "DEVICE_SERVICES:${DEVICE_SERVICES}" \\
+  -t "DEVICE_MASKED_SERVICES:${DEVICE_MASKED_SERVICES:-}" \\
   -t "UI_NAME:${UI_NAME}" \\
   -t "UI_DM:${UI_DM}" \\
   -t "BUILD_COLOR:${BUILD_COLOR}" \\
@@ -378,7 +404,7 @@ T_FLAGS="$(build_t_flags)"
 
 cat > run_build.sh << RUNEOF
 #!/bin/bash
-# Mobuntu RC16a — run_build.sh
+# Mobuntu RC17 — run_build.sh
 # Generated by 1_preflight.sh — do not edit manually.
 # Re-run 1_preflight.sh to regenerate.
 set -e
@@ -394,7 +420,7 @@ EFFECTIVE_RELEASE="${EFFECTIVE_RELEASE}"  # noble for Switch, UBUNTU_RELEASE for
 cd "\${SCRIPT_DIR}"
 
 echo "======================================================="
-echo "   Mobuntu RC16a — Build: ${DEVICE_NAME}"
+echo "   Mobuntu RC17 — Build: ${DEVICE_NAME}"
 echo "   Release: ${UBUNTU_RELEASE}  Backend: ${FAKEMACHINE_BACKEND}"
 echo "======================================================="
 

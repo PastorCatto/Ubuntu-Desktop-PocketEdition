@@ -1,0 +1,11 @@
+# iio-sensor-proxy: libssc
+# IIO sensor to D-Bus proxy with libssc support
+
+ACTION=="remove", GOTO="iio_sensor_proxy_libssc_end"
+
+# Set the sensor type for all the types we recognise for SDSP/ADSP.
+# Some devices expose the sensors via a separate SDSP while others re-use ADSP.
+# These DSPs expose itself as /dev/fastrpc-* in the misc subsystem.
+SUBSYSTEM=="misc", KERNEL=="fastrpc-*", ENV{IIO_SENSOR_PROXY_TYPE}+="ssc-accel ssc-light ssc-proximity ssc-compass"
+
+LABEL="iio_sensor_proxy_libssc_end"

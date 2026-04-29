@@ -33,7 +33,7 @@ for control in hexagonrpcd-dummy.control qcom-support-common-dummy.control; do
     pkg=$(grep '^Package:' "$control" | awk '{print $2}')
     info "Building: $pkg"
     equivs-build "$control"
-    ok "Built: ${pkg}_99.0-mobuntu1_arm64.deb"
+    ok "Built: ${pkg}_99.0-mobuntu1_all.deb"
 done
 
 echo ""

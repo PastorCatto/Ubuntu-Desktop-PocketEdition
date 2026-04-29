@@ -14,9 +14,11 @@
 #   --verbose  Show full git log and curl output
 #
 # Sources:
-#   sdm845-mainline/firmware-xiaomi-beryllium (gitlab.com)
-#   linux-firmware GPU blobs (kernel.org)
-#   alsa-ucm-conf (repo.mobian.org apt)
+#   sdm845-mainline/firmware-xiaomi-beryllium (gitlab.com)       — beryllium git layer
+#   linux-firmware sparse clone (kernel.org)                     — enchilada/fajita blobs
+#   pmaports device overrides (gitlab.postmarketos.org)          — enchilada/fajita speaker amp fw
+#   linux-firmware GPU blobs (kernel.org)                        — all devices
+#   alsa-ucm-conf (repo.mobian.org apt)                          — all qcom devices
 #
 # Output:
 #   firmware/<brand>-<codename>/firmware.tar.gz  — updated bundle
@@ -156,6 +158,87 @@ if [ -n "${FIRMWARE_REPO:-}" ]; then
     fi
 else
     warn "FIRMWARE_REPO not set in device config — skipping git layer."
+fi
+
+# ── Step 1b: linux-firmware sparse clone ──────────────────────────────────────
+# Used when FIRMWARE_APT_SUBPATH is set in the device config (e.g. enchilada/fajita).
+# Sparse-clones kernel.org linux-firmware and extracts only the relevant subpath
+# instead of downloading the full ~700MB linux-firmware apt package.
+if [ -n "${FIRMWARE_APT_SUBPATH:-}" ]; then
+    info "Fetching linux-firmware blobs (sparse: $FIRMWARE_APT_SUBPATH)..."
+    LF_TMP=$(mktemp -d /tmp/mbu-lf-XXXX)
+    trap 'rm -rf "$FW_STAGE" "$FW_PREV" "${GIT_TMP:-}" "${LF_TMP:-}" "${UCM_DEB:-}" "${UCM_EXTRACT:-}"' EXIT
+
+    git clone --depth=1 --filter=blob:none --sparse --quiet \
+        https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git \
+        "$LF_TMP" 2>/dev/null || { warn "linux-firmware clone failed (non-fatal)"; LF_TMP=""; }
+
+    if [ -n "$LF_TMP" ]; then
+        git -C "$LF_TMP" sparse-checkout set "$FIRMWARE_APT_SUBPATH" 2>/dev/null
+
+        SRC_PATH="$LF_TMP/$FIRMWARE_APT_SUBPATH"
+        if [ -d "$SRC_PATH" ]; then
+            DEST_PATH="$FW_STAGE/lib/firmware/$FIRMWARE_APT_SUBPATH"
+            mkdir -p "$DEST_PATH"
+            cp -r "$SRC_PATH/." "$DEST_PATH/"
+
+            prev_path="$FW_PREV/lib/firmware/$FIRMWARE_APT_SUBPATH"
+            if [ -d "$prev_path" ]; then
+                new_hash=$(find "$DEST_PATH" -type f -exec sha256sum {} \; | sort | sha256sum | cut -d' ' -f1)
+                old_hash=$(find "$prev_path" -type f -exec sha256sum {} \; | sort | sha256sum | cut -d' ' -f1)
+                if [ "$new_hash" != "$old_hash" ]; then
+                    CHANGES+=("linux-firmware: $FIRMWARE_APT_SUBPATH updated")
+                    changed "  linux-firmware/$FIRMWARE_APT_SUBPATH — updated"
+                else
+                    [ "$VERBOSE" = true ] && ok "  linux-firmware/$FIRMWARE_APT_SUBPATH — unchanged"
+                fi
+            else
+                NEW_FILES+=("linux-firmware/$FIRMWARE_APT_SUBPATH")
+                changed "  linux-firmware/$FIRMWARE_APT_SUBPATH — new"
+            fi
+
+            BLOB_COUNT=$(find "$DEST_PATH" -type f | wc -l)
+            ok "linux-firmware blobs staged ($BLOB_COUNT files from $FIRMWARE_APT_SUBPATH)"
+        else
+            warn "linux-firmware: $FIRMWARE_APT_SUBPATH not found in repo (non-fatal)"
+        fi
+    fi
+fi
+
+# ── Step 1c: pmaports overrides ───────────────────────────────────────────────
+# Used when FIRMWARE_PMAPORTS_DEVICE is set in the device config.
+# Fetches device-specific speaker amp firmware overrides from pmaports and
+# places them at lib/firmware/postmarketos/ per the Mobian/pmaports convention.
+if [ -n "${FIRMWARE_PMAPORTS_DEVICE:-}" ]; then
+    info "Fetching pmaports overrides for $FIRMWARE_PMAPORTS_DEVICE..."
+    PMAPORTS_BASE="https://gitlab.postmarketos.org/postMarketOS/pmaports/-/raw/master"
+    PMAPORTS_PKG="device/community/device-${FIRMWARE_PMAPORTS_DEVICE}"
+    mkdir -p "$FW_STAGE/lib/firmware/postmarketos"
+
+    for override_file in tfa98xx.cnt crbtfw21.tlv; do
+        dest="$FW_STAGE/lib/firmware/postmarketos/$override_file"
+        url="${PMAPORTS_BASE}/${PMAPORTS_PKG}/${override_file}"
+
+        if curl -fsSL --silent -o "$dest" "$url" 2>/dev/null && [ -s "$dest" ]; then
+            prev_file="$FW_PREV/lib/firmware/postmarketos/$override_file"
+            if [ -f "$prev_file" ]; then
+                new_hash=$(sha256sum "$dest" | cut -d' ' -f1)
+                old_hash=$(sha256sum "$prev_file" | cut -d' ' -f1)
+                if [ "$new_hash" != "$old_hash" ]; then
+                    CHANGES+=("pmaports: $override_file updated")
+                    changed "  $override_file — updated"
+                else
+                    [ "$VERBOSE" = true ] && ok "  $override_file — unchanged"
+                fi
+            else
+                NEW_FILES+=("$override_file")
+                changed "  $override_file — new"
+            fi
+        else
+            rm -f "$dest"
+            warn "  $override_file — not found in pmaports at $PMAPORTS_PKG (non-fatal)"
+        fi
+    done
 fi
 
 # ── Step 2: GPU firmware from kernel.org ──────────────────────────────────────

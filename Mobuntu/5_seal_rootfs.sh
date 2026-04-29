@@ -99,7 +99,7 @@ ConditionPathExists=/etc/mobuntu-resize-pending
 
 [Service]
 Type=oneshot
-ExecStart=/usr/sbin/resize2fs /dev/disk/by-label/${DEVICE_IMAGE_LABEL}
+ExecStart=/usr/sbin/resize2fs /dev/disk/by-uuid/${BUILD_UUID}
 ExecStartPost=/bin/rm -f /etc/mobuntu-resize-pending
 ExecStartPost=/sbin/reboot
 RemainAfterExit=yes
@@ -111,160 +111,292 @@ RESIZEOF
         '${ROOTFS_DIR}/etc/systemd/system/multi-user.target.wants/mobuntu-resize.service'"
     sudo touch "${ROOTFS_DIR}/etc/mobuntu-resize-pending"
 fi
-
 # -------------------------------------------------------
 # Step 5: Boot image — method-specific
 # -------------------------------------------------------
 case "$BOOT_METHOD" in
 mkbootimg)
-    # Stage firmware blobs into rootfs BEFORE update-initramfs runs so
-    # initramfs-tools firmware hook picks them up naturally.
-    echo ">>> Staging firmware into rootfs before initramfs generation..."
+    echo ">>> Staging firmware into rootfs..."
     FW_BUNDLE="${SCRIPT_DIR}/firmware/${DEVICE_BRAND}-${DEVICE_CODENAME}/firmware.tar.gz"
     if [ -f "$FW_BUNDLE" ]; then
         sudo tar -xzf "$FW_BUNDLE" -C "$ROOTFS_DIR/" || \
-        { echo "    [WARN] Firmware bundle extraction failed — check $FW_BUNDLE"; }
+            echo "    [WARN] Firmware bundle extraction failed — check $FW_BUNDLE"
         echo "    Staged: firmware bundle ($(du -sh $FW_BUNDLE | cut -f1))"
     else
         echo "    [WARN] No firmware bundle at $FW_BUNDLE"
     fi
 
-    # Ensure GPU firmware is present — fetch from kernel.org if missing
     for blob in a630_sqe.fw a630_gmu.bin; do
         if [ ! -f "$ROOTFS_DIR/lib/firmware/qcom/$blob" ]; then
             echo "    Fetching $blob from kernel.org..."
             sudo mkdir -p "$ROOTFS_DIR/lib/firmware/qcom"
-            sudo curl -fsSL -o "$ROOTFS_DIR/lib/firmware/qcom/$blob"                 "https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain/qcom/$blob"                 2>/dev/null && echo "    OK: $blob" || echo "    [WARN] Failed to fetch $blob"
+            sudo curl -fsSL \
+                -o "$ROOTFS_DIR/lib/firmware/qcom/$blob" \
+                "https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain/qcom/$blob" \
+                2>/dev/null && echo "    OK: $blob" || echo "    [WARN] Failed to fetch $blob"
         fi
     done
 
-    echo ">>> Injecting firmware into initramfs..."
-    # Inject firmware directly into the existing initrd via cpio on the host.
-    # This avoids running update-initramfs inside a chroot which requires
-    # qemu-aarch64-static + working binfmt_misc — both unreliable in WSL2.
+    # ── Install qcom-firmware initramfs hook ─────────────────────────────
+    # The Mobian SDM845 kernel is monolithic — initramfs-tools walks module
+    # dependencies to decide what firmware to include, and with no modules
+    # there are no references, so /lib/firmware/qcom never lands in the
+    # initrd no matter how much we stage. This hook copies it explicitly.
+    # (RC15 had this; RC16 rewrite dropped it. This is the boot regression.)
+    echo ">>> Installing qcom-firmware initramfs hook..."
+    HOOK_SRC=""
+    for cand in "${SCRIPT_DIR}/firmware/${DEVICE_BRAND}-${DEVICE_CODENAME}/qcom-firmware" \
+                "${SCRIPT_DIR}/qcom-firmware"; do
+        [ -f "$cand" ] && { HOOK_SRC="$cand"; break; }
+    done
+    sudo mkdir -p "$ROOTFS_DIR/etc/initramfs-tools/hooks"
+    if [ -n "$HOOK_SRC" ]; then
+        sudo cp "$HOOK_SRC" "$ROOTFS_DIR/etc/initramfs-tools/hooks/qcom-firmware"
+        echo "    Source: $HOOK_SRC"
+    else
+        echo "    [INFO] No external hook found — generating default inline"
+        sudo tee "$ROOTFS_DIR/etc/initramfs-tools/hooks/qcom-firmware" >/dev/null << 'HOOKEOF'
+#!/bin/sh
+# Mobuntu — qcom-firmware initramfs hook
+# Copies /lib/firmware/qcom into the initrd. Required because the SDM845
+# Mobian kernel is monolithic; initramfs-tools won't pull firmware via
+# module dependencies, so we copy the tree explicitly.
+#
+# Excludes modem.mbn (~60MB) — modem remoteproc loads late and falls back
+# to rootfs via deferred request_firmware. Including it busts boot
+# partition limits with no functional benefit. To include modem firmware
+# in the initrd anyway, set INCLUDE_MODEM_FIRMWARE=1 in the environment
+# before running update-initramfs.
+PREREQ=""
+prereqs() { echo "$PREREQ"; }
+case $1 in
+    prereqs) prereqs; exit 0 ;;
+esac
 
-    # Resolve to absolute path BEFORE any cd — relative paths break
-    # the moment we cd into the temp injection directory.
+. /usr/share/initramfs-tools/hook-functions
+
+if [ -d /lib/firmware/qcom ]; then
+    mkdir -p "$DESTDIR/lib/firmware"
+    if [ "${INCLUDE_MODEM_FIRMWARE:-0}" = "1" ]; then
+        cp -a /lib/firmware/qcom "$DESTDIR/lib/firmware/"
+    else
+        # rsync would be cleaner but isn't always in initramfs build env;
+        # use cp + find to delete after.
+        cp -a /lib/firmware/qcom "$DESTDIR/lib/firmware/"
+        find "$DESTDIR/lib/firmware/qcom" -name 'modem.mbn' -delete
+        find "$DESTDIR/lib/firmware/qcom" -name 'modem*.jsn' -delete
+        find "$DESTDIR/lib/firmware/qcom" -name 'mba.mbn' -delete
+    fi
+fi
+HOOKEOF
+    fi
+    sudo chmod +x "$ROOTFS_DIR/etc/initramfs-tools/hooks/qcom-firmware"
+
     ROOTFS_DIR="$(realpath "$ROOTFS_DIR")"
 
-    INITRD_FILE=$(ls -1 "$ROOTFS_DIR/boot/initrd.img-"*sdm845* 2>/dev/null | head -1)
-    if [ -z "$INITRD_FILE" ]; then
-        echo "    [WARN] No sdm845 initrd found — skipping firmware injection"
+    # ── Chroot setup ──────────────────────────────────────────────────────
+    if [ "$HOST_ARCH" != "aarch64" ]; then
+        sudo mount binfmt_misc -t binfmt_misc /proc/sys/fs/binfmt_misc 2>/dev/null || true
+        sudo sh -c 'echo -1 > /proc/sys/fs/binfmt_misc/qemu-aarch64' 2>/dev/null || true
+        sudo sh -c 'echo ":qemu-aarch64:M::\x7fELF\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\xb7\x00:\xff\xff\xff\xff\xff\xff\xff\x00\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff\xff:/usr/bin/qemu-aarch64-static:F" > /proc/sys/fs/binfmt_misc/register' 2>/dev/null || true
+        sudo cp /usr/bin/qemu-aarch64-static "$ROOTFS_DIR/usr/bin/" 2>/dev/null || true
+        sudo ln -sfn /usr/lib/aarch64-linux-gnu/ld-linux-aarch64.so.1 \
+            "$ROOTFS_DIR/lib/ld-linux-aarch64.so.1"
+    fi
+
+    for d in dev dev/pts proc sys run; do
+        if ! mountpoint -q "$ROOTFS_DIR/$d" 2>/dev/null; then
+            if [ "$d" = "dev/pts" ]; then
+                sudo mount -t devpts devpts "$ROOTFS_DIR/dev/pts" \
+                    -o nosuid,noexec,gid=5,mode=620,ptmxmode=666 2>/dev/null || true
+            else
+                sudo mount --bind "/$d" "$ROOTFS_DIR/$d" 2>/dev/null || true
+            fi
+        fi
+    done
+
+    # ── Provide DNS in chroot ────────────────────────────────────────────
+    # apt/curl during seal need to resolve hostnames. The rootfs's
+    # /etc/resolv.conf is typically a broken symlink to a systemd-resolved
+    # path that doesn't exist in this chroot. Save the original, bind-mount
+    # the host's, undo at teardown so nothing leaks into the sealed image.
+    RESOLV_CONF="$ROOTFS_DIR/etc/resolv.conf"
+    if [ -e "$RESOLV_CONF" ] || [ -L "$RESOLV_CONF" ]; then
+        sudo mv "$RESOLV_CONF" "${RESOLV_CONF}.seal-backup" 2>/dev/null || true
+    fi
+    sudo touch "$RESOLV_CONF"
+    sudo mount --bind /etc/resolv.conf "$RESOLV_CONF" 2>/dev/null || \
+        { echo "    [WARN] resolv.conf bind failed — apt may have no DNS"; \
+          sudo cp /etc/resolv.conf "$RESOLV_CONF" 2>/dev/null || true; }
+
+    # Stub module dirs — Mobian SDM845 kernel is monolithic
+    for _kver in $(ls "$ROOTFS_DIR/boot/vmlinuz-"*sdm845* 2>/dev/null | sed 's|.*/vmlinuz-||'); do
+        _moddir="$ROOTFS_DIR/lib/modules/$_kver"
+        if [ ! -d "$_moddir" ]; then
+            sudo mkdir -p "$_moddir"
+            sudo touch "$_moddir/modules.order" \
+                       "$_moddir/modules.builtin" \
+                       "$_moddir/modules.builtin.modinfo"
+        fi
+    done
+
+    # ── Resolve which kernel to seal ─────────────────────────────────────
+    # build.env's KERNEL_SERIES is the canonical source of truth. Fall back
+    # to newest-by-mtime only if it's unset or doesn't match an installed
+    # kernel — kills the multi-kernel mismatch hazard and stops us from
+    # regenerating initrds we don't need.
+    if [ -n "${KERNEL_SERIES:-}" ] && \
+       [ -f "$ROOTFS_DIR/boot/vmlinuz-${KERNEL_SERIES}" ]; then
+        KERN_VER="${KERNEL_SERIES}"
+        echo ">>> Sealing kernel: $KERN_VER (from KERNEL_SERIES)"
     else
-        INJECT_TMP=$(mktemp -d /tmp/initrd-inject-XXXX)
-        echo "    Unpacking $(basename $INITRD_FILE) ($(du -sh $INITRD_FILE | cut -f1))..."
-        cd "$INJECT_TMP"
-
-        INITRD_FORMAT=$(file "$INITRD_FILE")
-        if echo "$INITRD_FORMAT" | grep -q "gzip"; then
-            zcat "$INITRD_FILE" | sudo cpio -id --quiet 2>/dev/null || true
-            COMPRESS="gzip"
-        elif echo "$INITRD_FORMAT" | grep -q "LZ4"; then
-            lz4 -d "$INITRD_FILE" - 2>/dev/null | sudo cpio -id --quiet 2>/dev/null || true
-            COMPRESS="lz4"
-        elif echo "$INITRD_FORMAT" | grep -q "Zstandard"; then
-            zstd -d "$INITRD_FILE" -c 2>/dev/null | sudo cpio -id --quiet 2>/dev/null || true
-            COMPRESS="zstd"
-        else
-            # Raw uncompressed cpio
-            sudo cpio -id --quiet < "$INITRD_FILE" 2>/dev/null || true
-            COMPRESS="none"
-        fi
-        echo "    Format: $COMPRESS"
-
-        echo "    Injecting firmware blobs..."
-        # Normalize to lib/firmware/ — matches what sdm845-support's initramfs hook
-        # writes, and what the kernel firmware loader checks at early boot.
-        # modem.mbn + modem jsons excluded: 60MB+, loads from rootfs via rmtfs
-        # post-boot, never needed in the initrd.
-        for fw_src in \
-            "$ROOTFS_DIR/lib/firmware/qcom" \
-            "$ROOTFS_DIR/usr/lib/firmware/qcom"; do
-            [ -d "$fw_src" ] || continue
-            sudo mkdir -p "${INJECT_TMP}/lib/firmware/qcom"
-            sudo cp -rn "$fw_src/." "${INJECT_TMP}/lib/firmware/qcom/"
-            sudo rm -f "${INJECT_TMP}/lib/firmware/qcom/sdm845/beryllium/modem.mbn"
-            sudo rm -f "${INJECT_TMP}/lib/firmware/qcom/sdm845/beryllium/modemr.jsn"
-            sudo rm -f "${INJECT_TMP}/lib/firmware/qcom/sdm845/beryllium/modemuw.jsn"
-        done
-
-        FW_COUNT=$(find "$INJECT_TMP/lib/firmware" -type f 2>/dev/null | wc -l)
-        echo "    Firmware files in initrd: $FW_COUNT"
-        if [ "$FW_COUNT" -eq 0 ]; then
-            echo "    [WARN] No firmware blobs injected — check firmware bundle and rootfs paths"
-        fi
-
-        echo "    Repacking initrd ($COMPRESS)..."
-        case "$COMPRESS" in
-            gzip) sudo find . | sudo cpio -o -H newc --quiet 2>/dev/null | \
-                    gzip -9 | sudo tee "$INITRD_FILE" > /dev/null ;;
-            lz4)  sudo find . | sudo cpio -o -H newc --quiet 2>/dev/null | \
-                    lz4 -9 | sudo tee "$INITRD_FILE" > /dev/null ;;
-            zstd) sudo find . | sudo cpio -o -H newc --quiet 2>/dev/null | \
-                    zstd -19 | sudo tee "$INITRD_FILE" > /dev/null ;;
-            *)    sudo find . | sudo cpio -o -H newc --quiet 2>/dev/null | \
-                    sudo tee "$INITRD_FILE" > /dev/null ;;
-        esac
-
-        cd - > /dev/null
-        sudo rm -rf "$INJECT_TMP"
-        echo "    Done: $(du -sh $INITRD_FILE | cut -f1)"
+        KERN_VER=$(ls -1tr "$ROOTFS_DIR/boot/vmlinuz-"*sdm845* 2>/dev/null \
+            | tail -1 | sed 's|.*/vmlinuz-||')
+        [ -z "$KERN_VER" ] && { echo "ERROR: No SDM845 kernel found in rootfs"; exit 1; }
+        echo ">>> Sealing kernel: $KERN_VER (KERNEL_SERIES unset/missing — using newest)"
     fi
+    export KERN_VER
 
-    echo ">>> Verifying firmware blobs inside initrd (warn only)..."
-    INITRD_CHECK=$(ls -1tr "$ROOTFS_DIR"/boot/initrd.img-*sdm845* 2>/dev/null | tail -n 1)
-    if [ -n "$INITRD_CHECK" ]; then
-        INITRD_CONTENTS=$(lsinitramfs "$INITRD_CHECK" 2>/dev/null || true)
-        for blob in "lib/firmware/qcom/a630_sqe.fw" \
-                    "lib/firmware/qcom/a630_gmu.bin" \
-                    "lib/firmware/qcom/sdm845/beryllium/adsp.mbn" \
-                    "lib/firmware/qcom/sdm845/beryllium/cdsp.mbn"; do
-            echo "$INITRD_CONTENTS" | grep -q "$blob" && \
-                echo "  [OK]   $blob" || \
-                echo "  [WARN] $blob — NOT in initrd (non-fatal)"
-        done
-        echo ">>> Initrd: $(du -h $INITRD_CHECK | cut -f1)"
+    # Disable zz-qcom-bootimg AND its caller — we run mkbootimg ourselves
+    # after initramfs is ready. The post-update.d hook calls the postinst.d
+    # hook directly, so disabling only the postinst.d hook leaves a 127 error.
+    sudo mv "$ROOTFS_DIR/etc/kernel/postinst.d/zz-qcom-bootimg" \
+        "$ROOTFS_DIR/etc/kernel/postinst.d/zz-qcom-bootimg.disabled" 2>/dev/null || true
+    sudo mv "$ROOTFS_DIR/etc/initramfs/post-update.d/bootimg" \
+        "$ROOTFS_DIR/etc/initramfs/post-update.d/bootimg.disabled" 2>/dev/null || true
+
+    # ── Write in-chroot build script using python to avoid heredoc escaping ──
+    # Export all vars needed by the python block — os.environ only sees exported vars
+    export SELECTED_DTB BOOT_DTB_APPEND MKBOOTIMG_PAGESIZE MKBOOTIMG_BASE
+    export MKBOOTIMG_KERNEL_OFFSET MKBOOTIMG_RAMDISK_OFFSET MKBOOTIMG_TAGS_OFFSET
+    export CMDLINE ROOTFS_DIR KERN_VER
+    python3 - << PYEOF
+import os, stat
+
+script = """#!/bin/bash
+set -e
+export DEBIAN_FRONTEND=noninteractive
+
+KERN_VER="{KERN_VER}"
+KERNEL="/boot/vmlinuz-\$KERN_VER"
+INITRD="/boot/initrd.img-\$KERN_VER"
+
+# Ensure zstd is available — gzip-compressed initrds for SDM845 with full
+# firmware bundle exceed the 64MB boot partition. zstd brings it back under.
+if ! command -v zstd >/dev/null 2>&1; then
+    echo ">>> Installing zstd for initrd compression..."
+    apt-get update 2>&1 | tail -2 || true
+    apt-get install -y --no-install-recommends zstd 2>&1 | tail -3 || \
+        echo "    [WARN] zstd install failed — initrd will use gzip and may be too large"
+fi
+
+# Force COMPRESS=zstd in initramfs config — Mobian rootfs sometimes ships
+# with COMPRESS=gzip as default. Override at the conf.d level.
+mkdir -p /etc/initramfs-tools/conf.d
+echo "COMPRESS=zstd" > /etc/initramfs-tools/conf.d/compress.conf
+
+echo ">>> Rebuilding initramfs for \$KERN_VER..."
+update-initramfs -u -k "\$KERN_VER" 2>&1
+
+DTB=\$(find /usr/lib /boot -name "{DTB}" 2>/dev/null | head -1)
+
+echo ">>> Kernel: \$(basename \$KERNEL)"
+echo ">>> Initrd: \$(basename \$INITRD) (\$(du -sh \$INITRD | cut -f1))"
+echo ">>> DTB:    \$(basename \$DTB)"
+
+[ -f "\$KERNEL" ] || {{ echo "ERROR: kernel not found"; exit 1; }}
+[ -f "\$INITRD" ] || {{ echo "ERROR: initrd not found"; exit 1; }}
+[ -f "\$DTB"    ] || {{ echo "ERROR: DTB {DTB} not found"; exit 1; }}
+
+echo ">>> Verifying firmware in initrd..."
+# Use lsinitramfs — handles gzip/zstd/multi-section initrds reliably.
+# Modern Ubuntu /usr-merge means firmware lands at usr/lib/firmware/...
+# even though source path is /lib/firmware/... (the symlink resolves at copy).
+INITRD_LISTING=\$(lsinitramfs "\$INITRD" 2>/dev/null || echo "")
+for blob in qcom/a630_sqe.fw \\
+            qcom/sdm845/beryllium/adsp.mbn \\
+            qcom/sdm845/beryllium/cdsp.mbn; do
+    if echo "\$INITRD_LISTING" | grep -qE "(usr/)?lib/firmware/\$blob\$"; then
+        echo "  [OK]   \$blob"
+    else
+        echo "  [WARN] \$blob NOT in initrd"
     fi
+done
 
-    echo ">>> Finding boot assets..."
-    KERNEL=$(ls -1tr "$ROOTFS_DIR"/boot/vmlinuz-*sdm845* 2>/dev/null | tail -n 1)
-    INITRD=$(ls -1tr "$ROOTFS_DIR"/boot/initrd.img-*sdm845* 2>/dev/null | tail -n 1)
-    DTB=$(find "$ROOTFS_DIR/usr/lib" "$ROOTFS_DIR/boot" \
-        -type f -name "$SELECTED_DTB" 2>/dev/null | head -n 1)
+if [ "{DTB_APPEND}" = "true" ]; then
+    cat "\$KERNEL" "\$DTB" > /tmp/kernel-dtb
+    KERNEL_ARG=/tmp/kernel-dtb
+else
+    KERNEL_ARG="\$KERNEL"
+fi
 
-    if [[ -z "$KERNEL" || -z "$INITRD" || -z "$DTB" ]]; then
-        echo "ERROR: Missing boot assets."
-        echo "  Kernel: ${KERNEL:-NOT FOUND}"
-        echo "  Initrd: ${INITRD:-NOT FOUND}"
-        echo "  DTB:    ${DTB:-NOT FOUND}"
-        exit 1
+echo ">>> Building boot.img..."
+mkbootimg \\\\
+    --kernel "\$KERNEL_ARG" \\\\
+    --ramdisk "\$INITRD" \\\\
+    --pagesize {PAGESIZE} \\\\
+    --base {BASE} \\\\
+    --kernel_offset {KOFFSET} \\\\
+    --ramdisk_offset {ROFFSET} \\\\
+    --tags_offset {TOFFSET} \\\\
+    --cmdline "{CMDLINE}" \\\\
+    -o /tmp/boot.img
+
+rm -f /tmp/kernel-dtb
+echo ">>> boot.img: \$(du -h /tmp/boot.img | cut -f1)"
+""".format(
+    DTB=os.environ['SELECTED_DTB'],
+    DTB_APPEND=os.environ['BOOT_DTB_APPEND'],
+    PAGESIZE=os.environ['MKBOOTIMG_PAGESIZE'],
+    BASE=os.environ['MKBOOTIMG_BASE'],
+    KOFFSET=os.environ['MKBOOTIMG_KERNEL_OFFSET'],
+    ROFFSET=os.environ['MKBOOTIMG_RAMDISK_OFFSET'],
+    TOFFSET=os.environ['MKBOOTIMG_TAGS_OFFSET'],
+    CMDLINE=os.environ['CMDLINE'],
+    KERN_VER=os.environ['KERN_VER'],
+)
+
+dest = os.environ['ROOTFS_DIR'] + '/tmp/mobuntu-seal.sh'
+with open(dest, 'w') as f:
+    f.write(script)
+os.chmod(dest, 0o755)
+print(">>> Seal script written to", dest)
+PYEOF
+
+    # ── Single chroot session ─────────────────────────────────────────────
+    echo ">>> Entering chroot..."
+    sudo chroot "$ROOTFS_DIR" /bin/bash /tmp/mobuntu-seal.sh 2>&1 | sed 's/^/    /'
+    _CHROOT_EXIT=${PIPESTATUS[0]}
+
+    # ── Teardown ──────────────────────────────────────────────────────────
+    # Unmount resolv.conf bind first, then run/shm and run/lock (tmpfs
+    # submounts created inside the chroot) before run itself — otherwise
+    # rm -rf and any further cleanup hits EBUSY.
+    sudo umount "$ROOTFS_DIR/etc/resolv.conf" 2>/dev/null || true
+    sudo rm -f "$ROOTFS_DIR/etc/resolv.conf"
+    if [ -e "$ROOTFS_DIR/etc/resolv.conf.seal-backup" ] || \
+       [ -L "$ROOTFS_DIR/etc/resolv.conf.seal-backup" ]; then
+        sudo mv "$ROOTFS_DIR/etc/resolv.conf.seal-backup" \
+            "$ROOTFS_DIR/etc/resolv.conf" 2>/dev/null || true
     fi
+    for d in run/shm run/lock run sys proc dev/pts dev; do
+        mountpoint -q "$ROOTFS_DIR/$d" 2>/dev/null && \
+            sudo umount -l "$ROOTFS_DIR/$d" 2>/dev/null || true
+    done
 
-    echo ">>> Kernel: $(basename $KERNEL)"
-    echo ">>> Initrd: $(basename $INITRD)"
-    echo ">>> DTB:    $(basename $DTB)"
+    sudo mv "$ROOTFS_DIR/etc/kernel/postinst.d/zz-qcom-bootimg.disabled" \
+        "$ROOTFS_DIR/etc/kernel/postinst.d/zz-qcom-bootimg" 2>/dev/null || true
+    sudo mv "$ROOTFS_DIR/etc/initramfs/post-update.d/bootimg.disabled" \
+        "$ROOTFS_DIR/etc/initramfs/post-update.d/bootimg" 2>/dev/null || true
 
+    [ "$_CHROOT_EXIT" -ne 0 ] && \
+        { echo "ERROR: in-chroot build failed (exit $_CHROOT_EXIT)"; exit 1; }
+
+    # ── Copy boot.img out ─────────────────────────────────────────────────
     BOOT_IMG="${DEVICE_IMAGE_LABEL}_${UBUNTU_RELEASE}_boot.img"
-
-    if [ "$BOOT_DTB_APPEND" = "true" ]; then
-        KERNEL_DTB=$(mktemp /tmp/kernel-dtb-XXXX)
-        cat "$KERNEL" "$DTB" > "$KERNEL_DTB"
-    else
-        KERNEL_DTB="$KERNEL"
-    fi
-
-    mkbootimg \
-        --kernel "$KERNEL_DTB" \
-        --ramdisk "$INITRD" \
-        --pagesize "$MKBOOTIMG_PAGESIZE" \
-        --base "$MKBOOTIMG_BASE" \
-        --kernel_offset "$MKBOOTIMG_KERNEL_OFFSET" \
-        --ramdisk_offset "$MKBOOTIMG_RAMDISK_OFFSET" \
-        --tags_offset "$MKBOOTIMG_TAGS_OFFSET" \
-        --cmdline "$CMDLINE" \
-        -o "$BOOT_IMG"
-
-    [ "$BOOT_DTB_APPEND" = "true" ] && rm -f "$KERNEL_DTB"
+    sudo cp "$ROOTFS_DIR/tmp/boot.img" "$BOOT_IMG"
+    sudo chown "$USER:$USER" "$BOOT_IMG" 2>/dev/null || true
+    sudo rm -f "$ROOTFS_DIR/tmp/boot.img" "$ROOTFS_DIR/tmp/mobuntu-seal.sh"
     echo ">>> boot.img: $(du -h $BOOT_IMG | cut -f1)"
     ;;
 

@@ -1,0 +1,10 @@
+PRETTY_NAME="Mobuntu 26.04"
+NAME="Mobuntu"
+VERSION_ID="26.04"
+VERSION="26.04 (sdm845-beryllium)"
+VERSION_CODENAME=resolute
+ID=ubuntu
+ID_LIKE=debian
+HOME_URL="https://discord.gg/RZV2HveyBg"
+UBUNTU_CODENAME=resolute
+LOGO=ubuntu-logo

@@ -1,0 +1,159 @@
+# Mobuntu RC16a — qcom.yaml
+# Included via recipe action from SDM845 device recipes.
+#
+# RC16a changes vs RC15:
+#   - stage-firmware-git.sh REMOVED. Firmware now comes via sdm845-support apt package.
+#     dpkg handles ordering — firmware lands in /lib/firmware/ before kernel postinst
+#     fires update-initramfs. No QEMU hook fragility, no BASH_SOURCE bugs.
+#   - qcom-firmware initramfs hook REMOVED from overlay. sdm845-support ships its own.
+#   - hexagonrpcd + qcom-support-common BLOCKED via equivs dummy packages.
+#     hexagonrpcd causes ADSP crash loops on beryllium without droid-juicer vendor
+#     files. Audio works correctly without it via UCM + 51-qcom.conf + service ordering.
+#   - FIRMWARE_METHOD / FIRMWARE_REPO template vars REMOVED (no longer used).
+#   - setup-qcom.sh REMOVED (was dead code, logic was already inlined here).
+#
+# Mobian repo is added HERE — after UI is installed in base.yaml — to prevent
+# Mobian packages from conflicting with Ubuntu UI package resolution.
+
+architecture: arm64
+
+actions:
+  # -------------------------------------------------------
+  # 1. Add Mobian repo (SDM845 kernel + Qcom userspace only)
+  # -------------------------------------------------------
+  - action: run
+    chroot: true
+    command: |
+      curl -fsSL https://repo.mobian.org/mobian.gpg -o /etc/apt/trusted.gpg.d/mobian.gpg
+      printf "deb http://repo.mobian.org/ staging main non-free-firmware\n" \
+          > /etc/apt/sources.list.d/mobian.list
+      apt-get update
+
+  # -------------------------------------------------------
+  # 2. Overlay: WirePlumber 51-qcom.conf
+  #    Note: initramfs hook is gone from this overlay in RC16a.
+  #    sdm845-support ships its own dpkg-managed hook.
+  # -------------------------------------------------------
+  - action: overlay
+    source: overlays/qcom
+
+  # -------------------------------------------------------
+  # 3. Stage dummy debs into rootfs (host-side, no QEMU)
+  #    Must happen before step 4 so dpkg sees deps as satisfied
+  #    before apt tries to resolve sdm845-support's dep chain.
+  # -------------------------------------------------------
+  - action: run
+    chroot: false
+    label: Stage dummy debs into rootfs
+    command: |
+      if ! ls "${ARTIFACTDIR}/packages/dummy/"*.deb > /dev/null 2>&1; then
+          echo "ERROR: No dummy .deb files found in packages/dummy/"
+          echo "       Run packages/dummy/build-dummies.sh first."
+          exit 1
+      fi
+      mkdir -p "${ROOTDIR}/tmp/mobuntu-dummy"
+      cp "${ARTIFACTDIR}/packages/dummy/"*.deb "${ROOTDIR}/tmp/mobuntu-dummy/"
+      echo ">>> Staged dummy packages:"
+      ls -lh "${ROOTDIR}/tmp/mobuntu-dummy/"
+
+  # -------------------------------------------------------
+  # 4. Install dummies, then sdm845-support
+  # -------------------------------------------------------
+  - action: run
+    chroot: true
+    command: |
+      export DEBIAN_FRONTEND=noninteractive
+
+      echo ">>> Installing dummy packages (block hexagonrpcd dep chain)..."
+      dpkg -i /tmp/mobuntu-dummy/*.deb
+
+      echo ">>> Holding dummy packages against apt upgrades..."
+      for pkg in hexagonrpcd qcom-support-common; do
+          dpkg -l "$pkg" > /dev/null 2>&1 && \
+              echo "$pkg hold" | dpkg --set-selections && \
+              echo "  held: $pkg" || true
+      done
+
+      echo ">>> Installing sdm845-support..."
+      apt-get install -y sdm845-support
+
+      rm -rf /tmp/mobuntu-dummy
+      echo ">>> sdm845-support installed."
+
+  # -------------------------------------------------------
+  # 5. fastrpc daemons + DSP binaries
+  #    install-fastrpc-device.sh uses $ARTIFACTDIR (fixed in RC16a).
+  # -------------------------------------------------------
+  - action: run
+    chroot: false
+    label: Install fastrpc and DSP firmware
+    script: scripts/install-fastrpc-device.sh
+    environment:
+      DEVICE_BRAND: "{{ .DEVICE_BRAND }}"
+      DEVICE_CODENAME: "{{ .DEVICE_CODENAME }}"
+
+  # -------------------------------------------------------
+  # 6. Qualcomm packages, services, hooks
+  # -------------------------------------------------------
+  - action: run
+    chroot: true
+    command: |
+      export DEBIAN_FRONTEND=noninteractive
+      DEVICE_PACKAGES="{{ .DEVICE_PACKAGES }}"
+      DEVICE_SERVICES="{{ .DEVICE_SERVICES }}"
+
+      echo ">>> Installing alsa-ucm-conf..."
+      apt-get install -y alsa-ucm-conf
+
+      if [ -n "${DEVICE_PACKAGES}" ]; then
+          echo ">>> Installing device packages: ${DEVICE_PACKAGES}"
+          apt-get install -y ${DEVICE_PACKAGES}
+      fi
+
+      echo ">>> Fetching Adreno 630 GPU firmware (if not already from sdm845-support)..."
+      KERNEL_ORG="https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain"
+      fetch_fw() {
+          local DEST="$1" FILE="$2"
+          mkdir -p "$DEST"
+          if [ -f "$DEST/$(basename $FILE)" ]; then
+              echo "  SKIP: $FILE (already present)"
+              return 0
+          fi
+          curl -L -f -s -o "$DEST/$(basename $FILE)" "$KERNEL_ORG/$FILE" && \
+              echo "  OK: $FILE" || echo "  WARN: Failed $FILE (non-fatal)"
+          return 0
+      }
+      fetch_fw "/lib/firmware/qcom" "qcom/a630_sqe.fw"
+      fetch_fw "/lib/firmware/qcom" "qcom/a630_gmu.bin"
+
+      echo ">>> Setting up Qualcomm service ordering..."
+      mkdir -p /etc/systemd/system/pd-mapper.service.d
+      printf '[Unit]\nAfter=qrtr-ns.service\nRequires=qrtr-ns.service\n' \
+          > /etc/systemd/system/pd-mapper.service.d/ordering.conf
+      mkdir -p /etc/systemd/system/rmtfs.service.d
+      printf '[Unit]\nAfter=qrtr-ns.service\nRequires=qrtr-ns.service\n' \
+          > /etc/systemd/system/rmtfs.service.d/ordering.conf
+
+      systemctl enable qrtr-ns   2>/dev/null || true
+      systemctl enable rmtfs     2>/dev/null || true
+      systemctl enable pd-mapper 2>/dev/null || true
+      systemctl enable tqftpserv 2>/dev/null || true
+      systemctl daemon-reload    2>/dev/null || true
+
+      echo ">>> Masking ALSA state services..."
+      systemctl mask alsa-state   2>/dev/null || true
+      systemctl mask alsa-restore 2>/dev/null || true
+
+      if [ -n "${DEVICE_SERVICES}" ]; then
+          for svc in ${DEVICE_SERVICES}; do
+              systemctl enable "$svc" 2>/dev/null || true
+          done
+      fi
+
+      [ -f /etc/kernel/postinst.d/zz-qcom-bootimg ] && \
+          chmod +x /etc/kernel/postinst.d/zz-qcom-bootimg
+      [ -f /etc/initramfs/post-update.d/bootimg ] && \
+          chmod +x /etc/initramfs/post-update.d/bootimg
+
+      mkdir -p /boot/efi
+      echo ">>> Qualcomm setup complete."

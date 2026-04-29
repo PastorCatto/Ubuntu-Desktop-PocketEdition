@@ -1,0 +1,58 @@
+#!/bin/bash
+# Mobuntu — boot.img builder
+# Runs automatically after update-initramfs via post-update.d hook.
+# Builds a fastboot-flashable boot.img from the installed kernel + initrd.
+
+set -eu
+
+KERNEL_VERSION="7.1.0-rc1-sdm845"
+KERNEL="/boot/vmlinuz-${KERNEL_VERSION}"
+DTB_BASE="/usr/lib/linux-image-${KERNEL_VERSION}/qcom"
+RAMDISK="/boot/initrd.img-${KERNEL_VERSION}"
+
+# Panel selection — read from /etc/kernel/boot_dtb if set by seal script,
+# otherwise default to tianma
+if [ -f /etc/kernel/boot_dtb ]; then
+    SELECTED_DTB=$(cat /etc/kernel/boot_dtb | tr -d '[:space:]')
+else
+    SELECTED_DTB="sdm845-xiaomi-beryllium-tianma.dtb"
+fi
+DTB="${DTB_BASE}/${SELECTED_DTB}"
+
+# Root UUID — try findmnt (works on booted device), fall back to fstab
+if ROOT_UUID=$(findmnt -n -o UUID / 2>/dev/null) && [ -n "$ROOT_UUID" ]; then
+    ROOT="UUID=${ROOT_UUID}"
+elif ROOT_UUID=$(awk '/\s+\/\s+ext4/ {print $1}' /etc/fstab | grep -oP 'UUID=\K[^ ]+' | head -1) && [ -n "$ROOT_UUID" ]; then
+    ROOT="UUID=${ROOT_UUID}"
+else
+    echo "WARNING: Could not determine root UUID — boot.img cmdline will be incomplete"
+    ROOT="ROOTDEV_UNKNOWN"
+fi
+
+CMDLINE="${ROOT} earlycon console=tty0 console=ttyMSM0,115200 init=/sbin/init ro loglevel=7"
+
+echo ">>> Building boot.img"
+echo "    Kernel : $(basename $KERNEL)"
+echo "    Initrd : $(basename $RAMDISK)"
+echo "    DTB    : $(basename $DTB)"
+echo "    Root   : ${ROOT}"
+
+[ -f "$KERNEL" ] || { echo "ERROR: kernel not found: $KERNEL"; exit 1; }
+[ -f "$RAMDISK" ] || { echo "ERROR: initrd not found: $RAMDISK"; exit 1; }
+[ -f "$DTB" ]    || { echo "ERROR: DTB not found: $DTB"; exit 1; }
+
+# Append DTB to kernel (required for SDM845 fastboot)
+cat "$KERNEL" "$DTB" > /tmp/vmlinuz-dtb
+
+abootimg --create /boot/boot.img \
+    -c kerneladdr=0x8000 \
+    -c ramdiskaddr=0x1000000 \
+    -c secondaddr=0x0 \
+    -c tagsaddr=0x100 \
+    -c pagesize=4096 \
+    -c cmdline="$CMDLINE" \
+    -k /tmp/vmlinuz-dtb \
+    -r "$RAMDISK"
+
+rm -f /tmp/vmlinuz-dtb
+echo ">>> boot.img: $(du -h /boot/boot.img | cut -f1)"

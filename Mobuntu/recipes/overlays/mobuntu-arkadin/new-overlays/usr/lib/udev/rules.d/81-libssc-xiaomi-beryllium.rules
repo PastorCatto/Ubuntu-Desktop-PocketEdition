@@ -1,0 +1,3 @@
+# iio-sensor-proxy with libssc: accelerometer mount matrix for Xiaomi Poco F1 (beryllium)
+# Axes confirmed from pmaports device config
+SUBSYSTEM=="misc", KERNEL=="fastrpc-*", ENV{ACCEL_MOUNT_MATRIX}+="0, 1, 0; -1, 0, 0; 0, 0, 1"

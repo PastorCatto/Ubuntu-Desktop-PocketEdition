@@ -4,7 +4,7 @@ Standards-Version: 3.9.2
 
 Package: qcom-support-common
 Version: 99.0-mobuntu1
-Architecture: arm64
+Architecture: all
 Maintainer: Mobuntu Build <build@mobuntu>
 Depends: hexagonrpcd
 Description: Dummy qcom-support-common — BLOCKED by Mobuntu RC16a

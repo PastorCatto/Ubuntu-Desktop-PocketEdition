@@ -1,0 +1,40 @@
+# Mobuntu — recipes/base-ubports.yaml
+# UBports PDK base recipe.
+# The PDK rootfs tarball is produced by recipes/scripts/extract-ubports-pdk.sh
+# (called from 1_preflight_ubports.sh) before debos runs.
+# This recipe simply unpacks it — no debootstrap, no UI install.
+# Lomiri + Ubuntu Touch userspace are already in the PDK.
+#
+# The device recipe (beryllium.yaml / enchilada.yaml / fajita.yaml) runs next
+# and handles kernel, firmware, and Qualcomm service setup via qcom.yaml.
+
+architecture: arm64
+
+actions:
+  - action: unpack
+    file: base-{{ .UBUNTU_RELEASE }}.tar.gz
+    compression: gz
+
+  - action: run
+    chroot: true
+    command: |
+      export DEBIAN_FRONTEND=noninteractive
+
+      echo ">>> UBports PDK base: configuring locale and timezone..."
+      locale-gen en_US.UTF-8 2>/dev/null || true
+      update-locale LANG=en_US.UTF-8 2>/dev/null || true
+
+      echo ">>> Updating apt cache..."
+      apt-get update -qq 2>/dev/null || true
+
+  - action: run
+    chroot: true
+    command: |
+      echo ">>> UBports base ready."
+      echo "    Release:  {{ .UBUNTU_RELEASE }}"
+      echo "    Hostname: {{ .DEVICE_HOSTNAME }}"
+      cat /etc/os-release 2>/dev/null | grep -E "^NAME|^VERSION" || true
+
+  - action: pack
+    file: base-{{ .UBUNTU_RELEASE }}.tar.gz
+    compression: gz
