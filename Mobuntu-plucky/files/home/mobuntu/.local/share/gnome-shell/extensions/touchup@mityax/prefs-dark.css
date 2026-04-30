@@ -1,0 +1,70 @@
+.callout {
+  padding: 25px;
+  border-radius: 15px;
+}
+.callout .title-2 {
+  margin-bottom: 15px;
+}
+.callout--green {
+  background-color: rgba(0, 154, 0, 0.06);
+  color: #004900;
+}
+
+.padding-normal {
+  padding: 15px;
+}
+
+.navigation-bar-page__buttons-bar-layout {
+  padding: 10px 12px;
+}
+.navigation-bar-page__drop-target {
+  border-radius: 10px;
+  background: alpha(var(--window-fg-color), 0.07);
+  padding: 5px;
+  min-height: 2.1em;
+  min-width: 6em;
+}
+.navigation-bar-page__drop-target__item {
+  transition: margin-left 0.3s;
+  background: lightgrey;
+  border-radius: 10px;
+  padding: 10px;
+}
+.navigation-bar-page__drop-target__item--going-to-insert-before {
+  margin-left: 24px;
+}
+
+.donations-page__donation-option {
+  padding: 25px;
+}
+.donations-page__donation-option button {
+  transition: background-color 0.5s, color 0.5s;
+}
+.donations-page__donation-option__title {
+  font-weight: bold;
+  margin-bottom: 5px;
+}
+.donations-page__donation-option__badge {
+  color: white;
+  background-color: darkgoldenrod;
+  border-radius: 10px;
+  padding: 1px 6px;
+  font-size: 60%;
+  font-weight: 500;
+  margin-bottom: 5px;
+}
+.donations-page__donation-option button {
+  margin-top: 20px;
+}
+.donations-page__donation-option--recommended {
+  border: 2px solid darkgoldenrod;
+}
+
+.callout--green {
+  background-color: rgba(255, 255, 255, 0.15);
+  color: #cccccc;
+}
+
+.donations-page__donation-option:hover {
+  border-color: white;
+}

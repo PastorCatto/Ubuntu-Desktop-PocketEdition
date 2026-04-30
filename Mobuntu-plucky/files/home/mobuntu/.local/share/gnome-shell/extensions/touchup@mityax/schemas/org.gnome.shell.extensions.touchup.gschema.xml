@@ -1,0 +1,203 @@
+
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.touchup" path="/org/gnome/shell/extensions/touchup/">
+    
+      <key name="navigation-bar-enabled" type="b">
+        <summary>Whether to enable the navigation bar feature or not.</summary>
+        <default>true</default>
+        
+      </key>
+    
+
+      <key name="navigation-bar-ignore-touch-mode" type="b">
+        <summary>If true, the navigation bar will be shown even if the Shell is not in touch mode. If false, the navigation bar will be shown only in touch mode.</summary>
+        <default>false</default>
+        
+      </key>
+    
+
+      <key name="navigation-bar-monitor" type="s">
+        <summary>When set, and the chosen monitor is connected, the navigation bar is shown on that monitor instead of the built-in monitor. When the chosen monitor is not connected, no navigation bar will be shown.</summary>
+        <default>"null"</default>
+        
+      </key>
+    
+
+      <key name="navigation-bar-primary-monitor-follows-navbar" type="b">
+        <summary>When enabled, the primary monitor is automatically changed to the monitor the navigation bar is placed on, as long as it's visible.</summary>
+        <default>true</default>
+        
+      </key>
+    
+
+      <key name="navigation-bar-mode" type="s">
+        <summary>Navigation bar mode – whether to use a small gesture navigation bar or a more old school navigation bar with buttons.</summary>
+        <default>"gestures"</default>
+        
+      </key>
+    
+
+      <key name="navigation-bar-gestures-reserve-space" type="b">
+        <summary>Whether to reserve space for the navigation bar or overlay it over the work area. This setting has no effect when the navigation bar mode is set to "buttons".</summary>
+        <default>true</default>
+        
+      </key>
+    
+
+      <key name="navigation-bar-gestures-invisible-mode" type="s">
+        <summary>Whether to hide to navigation bar gesture hint entirely.</summary>
+        <default>"never"</default>
+        
+      </key>
+    
+
+      <key name="navigation-bar-gestures-base-dist-factor" type="i">
+        <summary>Factor by which the overview gesture base distance is scaled (i.e. the bigger this factor, the longer the required swipe distance for opening overview/app grid).</summary>
+        <default>2</default>
+        
+      </key>
+    
+
+      <key name="navigation-bar-buttons-left" type="s">
+        <summary>Which buttons to show on the left side of the button navigation bar * Available choices are: - "keyboard" - keyboard open button - "workspace-previous" - switch to previous workspace - "workspace-next" - switch to next workspace - "overview" - open overview - "apps" - open apps overview - "back" - navigate back - "spacer" - adds a little space between buttons</summary>
+        <default>"[\"keyboard\"]"</default>
+        
+      </key>
+    
+
+      <key name="navigation-bar-buttons-middle" type="s">
+        <summary>Which buttons to show in the middle of the button navigation bar * Available choices are: - "keyboard" - keyboard open button - "workspace-previous" - switch to previous workspace - "workspace-next" - switch to next workspace - "overview" - open overview - "apps" - open apps overview - "back" - navigate back - "spacer" - adds a little space between buttons</summary>
+        <default>"[]"</default>
+        
+      </key>
+    
+
+      <key name="navigation-bar-buttons-right" type="s">
+        <summary>Which buttons to show on the right side of the button navigation bar * Available choices are: - "keyboard" - keyboard open button - "workspace-previous" - switch to previous workspace - "workspace-next" - switch to next workspace - "overview" - open overview - "apps" - open apps overview - "back" - navigate back - "spacer" - adds a little space between buttons</summary>
+        <default>"[\"workspace-previous\", \"workspace-next\", \"spacer\", \"apps\", \"overview\", \"back\"]"</default>
+        
+      </key>
+    
+
+      <key name="desktop-background-gestures-enabled" type="b">
+        <summary>Whether to enable the desktop background navigation gestures feature or not.</summary>
+        <default>true</default>
+        
+      </key>
+    
+
+      <key name="overview-background-gestures-enabled" type="b">
+        <summary>Whether to enable the overview background navigation gestures feature or not.</summary>
+        <default>true</default>
+        
+      </key>
+    
+
+      <key name="window-preview-gestures-enabled" type="b">
+        <summary>Whether to enable the overview window preview swipe-up-to-close feature or not.</summary>
+        <default>true</default>
+        
+      </key>
+    
+
+      <key name="osk-key-popups-enabled" type="b">
+        <summary>Whether to enable the OSK key popup feature or not.</summary>
+        <default>true</default>
+        
+      </key>
+    
+
+      <key name="osk-key-popups-style" type="s">
+        <summary>Which style OSK key popups should follow.</summary>
+        <default>"accent"</default>
+        
+      </key>
+    
+
+      <key name="osk-key-popups-duration" type="i">
+        <summary>How long to show the OSK key popups for (in milliseconds).</summary>
+        <default>35</default>
+        
+      </key>
+    
+
+      <key name="osk-gestures-swipe-to-close-enabled" type="b">
+        <summary>Whether to enable the swipe-to-close OSK gesture or not.</summary>
+        <default>true</default>
+        
+      </key>
+    
+
+      <key name="osk-gestures-extend-keys-enabled" type="b">
+        <summary>Whether to (virtually, not visibly) extend keys, i.e. allow taps close by an OSK key to also be registered as a key press.</summary>
+        <default>true</default>
+        
+      </key>
+    
+
+      <key name="osk-quick-paste-action-enabled" type="b">
+        <summary>Whether to show a quick paste button in the OSK's suggestion bar when having copied something to the clipboard recently.</summary>
+        <default>true</default>
+        
+      </key>
+    
+
+      <key name="osk-space-bar-ime-switching-enabled" type="b">
+        <summary>Whether to allow swiping on the OSK space bar to switch IMEs/languages.</summary>
+        <default>true</default>
+        
+      </key>
+    
+
+      <key name="osk-space-bar-ime-switching-indicator-mode" type="s">
+        <summary>How to indicate the IMEs/languages in the space bar:</summary>
+        <default>"current"</default>
+        
+      </key>
+    
+
+      <key name="screen-rotate-utils-floating-screen-rotate-button-enabled" type="b">
+        <summary>Whether to show a floating screen rotate button when Gnome's auto-rotate setting is disabled, and the device is physically rotated. * Note: This has no effect if the device does not have an accelerometer.</summary>
+        <default>true</default>
+        
+      </key>
+    
+
+      <key name="double-tap-to-sleep-enabled" type="b">
+        <summary>Whether to enable double-tap-to-sleep on panel and desktop background or not.</summary>
+        <default>true</default>
+        
+      </key>
+    
+
+      <key name="notification-gestures-enabled" type="b">
+        <summary>Whether to enable touchscreen gestures for notifications or not.</summary>
+        <default>true</default>
+        
+      </key>
+    
+
+      <key name="virtual-touchpad-enabled" type="b">
+        <summary>Whether to enable the virtual touchpad feature or not.</summary>
+        <default>true</default>
+        
+      </key>
+    
+
+      <key name="donations-installation-data" type="s">
+        <summary></summary>
+        <default>"{}"</default>
+        
+      </key>
+    
+
+      <key name="preferences-initial-page" type="s">
+        <summary>The initial page to show when the extension preferences are opened the next time.</summary>
+        <default>"default"</default>
+        
+      </key>
+    
+  </schema>
+</schemalist>
+            

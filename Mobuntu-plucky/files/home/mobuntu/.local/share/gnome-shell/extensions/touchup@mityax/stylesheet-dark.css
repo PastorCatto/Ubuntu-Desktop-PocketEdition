@@ -1,0 +1,87 @@
+.touchup-navbar--visible.touchup-navbar--gestures #keyboard,
+.touchup-navbar--visible.touchup-navbar--gestures #dash,
+.touchup-navbar--visible.touchup-navbar--gestures #dashtodockContainer #dash,
+.touchup-navbar--visible.touchup-navbar--gestures #panelBox.dashtopanel {
+  padding-bottom: 22px !important;
+}
+.touchup-navbar--visible.touchup-navbar--buttons #keyboard,
+.touchup-navbar--visible.touchup-navbar--buttons #dash,
+.touchup-navbar--visible.touchup-navbar--buttons #dashtodockContainer #dash,
+.touchup-navbar--visible.touchup-navbar--buttons #panelBox.dashtopanel {
+  padding-bottom: 43px !important;
+}
+.touchup-navbar--visible.touchup-navbar #panelBox.dashtopanel {
+  background: #191919;
+}
+
+.touchup-navbar {
+  transition: background-color;
+  transition-duration: 0.3s;
+  background-color: #191919;
+}
+.touchup-navbar .touchup-navbar__pill {
+  transition: background-color;
+  transition-duration: 0.5s;
+  background-color: whitesmoke;
+  border-radius: 20px;
+}
+.touchup-navbar .touchup-navbar__button {
+  color: whitesmoke;
+  border-radius: 10px;
+  width: 20px;
+  height: 20px;
+  padding: 10px;
+  margin: 4px 12px 4px 12px;
+  transition: background-color;
+  transition-duration: 250ms;
+}
+.touchup-navbar .touchup-navbar__button:hover {
+  background-color: rgba(245, 245, 245, 0.2);
+}
+.touchup-navbar.touchup-navbar--transparent {
+  background-color: rgba(0, 0, 0, 0);
+}
+.touchup-navbar.touchup-navbar--transparent .touchup-navbar__pill {
+  background-color: whitesmoke;
+}
+.touchup-navbar.touchup-navbar--transparent .touchup-navbar__pill--dark {
+  background-color: #191919;
+}
+
+.touchup-floating-screen-rotation-button {
+  border-radius: 50px;
+  padding: 12px;
+  background-color: #191919;
+  box-shadow: rgba(0, 0, 0, 0.2) 0 0 15px;
+}
+
+StButton.message.touchup-notification--touched {
+  background-color: #66666d;
+}
+
+.touchup-osk-key-popup--accent {
+  background: -st-accent-color;
+  color: -st-accent-fg-color;
+}
+.touchup-osk-key-popup--subtle {
+  background: rgb(119.7058823529, 119.7058823529, 119.7058823529);
+}
+.touchup-osk-key-popup StLabel {
+  padding: 16px 0;
+}
+
+.touchup-quick-paste-button {
+  font-size: 90%;
+  border-radius: 10px;
+}
+.touchup-quick-paste-button StIcon {
+  width: 1em;
+  height: 1em;
+  margin-right: 12px;
+}
+
+.touchup-osk-ime-indicator {
+  font-weight: normal;
+  font-size: 75%;
+  color: rgba(245, 245, 245, 0.75);
+}

@@ -1,0 +1,16 @@
+{{- $architecture := or .architecture "arm64" -}}
+
+architecture: {{ $architecture }}
+
+actions:
+  - action: apt
+    packages: [ca-certificates, locales-all, dialog, nano, curl, wget, apt-utils, netplan.io,
+               git, man-db, bash-completion, kmod, busybox-initramfs, cpio, initramfs-tools,
+               initramfs-tools-bin, initramfs-tools-core, sudo, systemd, systemd-sysv, gdisk,
+               parted, linux-base, util-linux, rfkill, file, findutils, ntpsec, bc, net-tools,
+               network-manager, modemmanager, bluez, gnupg2, blueman, binutils, rsync,
+               qrtr-tools, rmtfs, protection-domain-mapper, qcom-phone-utils, tqftpserv,
+               hexagonrpcd, abootimg, linux-firmware-qualcomm-graphics,
+               linux-firmware-qualcomm-misc, linux-firmware-qualcomm-wireless, extrepo,
+               zstd, zarchive-tools, pipewire*, alsa*, gnome-calls, chatty,
+               gnome-shell-extension-manager]

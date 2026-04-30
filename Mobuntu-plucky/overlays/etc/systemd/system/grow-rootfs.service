@@ -1,0 +1,12 @@
+[Unit]
+Description=Grow Root Filesystem
+Before=systemd-user-sessions.service
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/grow-rootfs.sh
+RemainAfterExit=no
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,31 @@
+{{- $suite   := or .suite   "plucky"                      -}}
+{{- $rootfs  := or .rootfs  "mobuntu-rootfs.tar.gz"       -}}
+
+architecture: arm64
+
+actions:
+  - action: debootstrap
+    suite: {{ $suite }}
+    components:
+      - main
+      - universe
+      - multiverse
+    mirror: http://ports.ubuntu.com/ubuntu-ports
+    variant: minbase
+    keyring-file: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+
+  - action: recipe
+    recipe: packages/packages-base.yaml
+
+  - action: run
+    chroot: true
+    script: scripts/setup-user.sh
+
+  - action: run
+    chroot: true
+    command: extrepo enable mobian
+
+  - action: pack
+    description: Create root filesystem tarball
+    file: {{ $rootfs }}
+    compression: gz
