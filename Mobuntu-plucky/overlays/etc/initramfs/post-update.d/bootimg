@@ -1,0 +1,33 @@
+#!/bin/bash
+
+set -eu
+
+ROOT="UUID=$(findmnt -n -o UUID /)"
+KERNEL=/boot/vmlinuz-7.1.0-rc1-sdm845
+DTB=/usr/lib/linux-image-7.1.0-rc1-sdm845/qcom/sdm845-xiaomi-beryllium-tianma.dtb
+RAMDISK=/boot/initrd.img-7.1.0-rc1-sdm845
+CMDLINE="root=${ROOT} earlycon console=tty0 console=ttyMSM0,115200 init=/sbin/init ro loglevel=7"
+
+echo "Appending device tree to the kernel.."
+cat $KERNEL $DTB > /tmp/vmlinuz-dtb
+
+echo "Creating boot.img."
+echo "Kernel: $KERNEL"
+echo "Initramfs: $RAMDISK"
+echo "DTB: $DTB"
+echo "Cmdline: $CMDLINE"
+
+abootimg --create /boot/boot.img \
+-c kerneladdr=0x8000 \
+-c ramdiskaddr=0x1000000 \
+-c secondaddr=0x0 \
+-c tagsaddr=0x100 \
+-c pagesize=4096 \
+-c cmdline="$CMDLINE" \
+-k /tmp/vmlinuz-dtb \
+-r "$RAMDISK"
+
+##### Uncomment after first boot #######
+
+#echo "Flashing boot partition"
+#dd if=/boot/boot.img of=/dev/disk/by-partlabel/boot bs=1M status=progress

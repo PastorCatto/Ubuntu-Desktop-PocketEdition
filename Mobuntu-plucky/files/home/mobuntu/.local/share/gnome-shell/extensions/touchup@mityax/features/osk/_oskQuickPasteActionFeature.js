@@ -1,0 +1,144 @@
+import ExtensionFeature from '../../core/extensionFeature.js';
+import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import Clutter from 'gi://Clutter';
+import { Ref, Row, Button, Icon, Label } from '../../utils/ui/widgets.js';
+import GLib from 'gi://GLib';
+import Shell from 'gi://Shell';
+import Meta from 'gi://Meta';
+import St from 'gi://St';
+import Pango from 'gi://Pango';
+import { clamp } from '../../utils/utils.js';
+
+const BUTTON_VISIBILITY_DURATION_AFTER_CLIPBOARD_CHANGE = 3 * 60; // in seconds
+class OSKQuickPasteAction extends ExtensionFeature {
+    _lastClipboardChange = -1;
+    _virtualKeyboard;
+    constructor(pm, keyboard) {
+        super(pm);
+        // Listen to clipboard changes:
+        const start = GLib.get_monotonic_time();
+        const selection = Shell.Global.get().get_display().get_selection();
+        this.pm.connectTo(selection, "owner-changed", (_, selectionType, sourceMemory) => {
+            // const isUserCaused = sourceMemory?.constructor.name.includes("Wayland");  // does not work if copying something from an St.Entry
+            const isAutomaticStartupChange = (GLib.get_monotonic_time() - start) / GLib.USEC_PER_SEC < 3;
+            if (selectionType === Meta.SelectionType.SELECTION_CLIPBOARD && !isAutomaticStartupChange) {
+                this._lastClipboardChange = GLib.get_real_time();
+            }
+        });
+        // To emit the "paste" keyboard events:
+        this._virtualKeyboard = Clutter
+            .get_default_backend()
+            .get_default_seat()
+            .create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE);
+        if (keyboard !== null) {
+            this.onNewKeyboard(keyboard);
+        }
+    }
+    onNewKeyboard(keyboard) {
+        // Setup our new top bar:
+        const pasteButton = new Ref();
+        const pasteButtonLabel = new Ref();
+        const topBar = new Row({
+            xAlign: Clutter.ActorAlign.CENTER,
+            children: [
+                new Button({
+                    styleClass: "touchup-quick-paste-button keyboard-key default-key", // inherit default keyboard key styling through `keyboard-key` and `default-key`
+                    ref: pasteButton,
+                    onClicked: () => {
+                        void this._triggerPaste();
+                        showButtonPatch.disable();
+                    },
+                    child: new Row({
+                        children: [
+                            new Icon({ iconName: 'edit-paste-symbolic' }),
+                            new Label({
+                                ref: pasteButtonLabel,
+                                onCreated: label => {
+                                    label.clutterText.singleLineMode = true;
+                                    label.clutterText.ellipsize = Pango.EllipsizeMode.END;
+                                },
+                            }),
+                        ]
+                    }),
+                }),
+            ],
+        });
+        this.pm.connectTo(keyboard._aspectContainer, 'notify::allocation', (aspectContainer) => {
+            topBar.width = aspectContainer.width;
+        });
+        this.pm.connectTo(topBar, 'notify::mapped', (aspectContainer) => {
+            topBar.width = aspectContainer.width;
+        });
+        // Create a patch to dynamically add/remove the topBar to/from the keyboard:
+        const showButtonPatch = this.pm.registerPatch(() => {
+            keyboard._suggestions.clear();
+            keyboard._suggestions.insert_child_at_index(topBar, 0);
+            const keyboardRef = new Ref(keyboard); // use a ref to only clean up if the keyboard hasn't been destroyed
+            return () => {
+                if (topBar.get_parent())
+                    keyboardRef.take()?._suggestions.remove_child(topBar);
+            };
+        });
+        this.pm.connectTo(keyboard._suggestions, 'child-added', () => {
+            showButtonPatch.disable();
+        });
+        this.pm.connectTo(keyboard, "visibility-changed", async () => {
+            if (this._lastClipboardChange == -1)
+                return;
+            const lastClipboardChange = (GLib.get_real_time() - this._lastClipboardChange) / GLib.USEC_PER_SEC;
+            if (Main.keyboard.visible && lastClipboardChange <= BUTTON_VISIBILITY_DURATION_AFTER_CLIPBOARD_CHANGE) {
+                // Check whether clipboard content is marked as secret:
+                const mimeTypes = St.Clipboard.get_default().get_mimetypes(St.ClipboardType.CLIPBOARD);
+                const isSecret = mimeTypes.some(m => m === 'x-kde-passwordManagerHint' || m.includes('secret'));
+                // If there's no plaintext in the clipboard, don't show the button:
+                if (!mimeTypes.some(m => m.split(";", 1)[0] === "text/plain"))
+                    return;
+                // Update the button label and show it:
+                pasteButtonLabel.current.text = this._createButtonDisplayText(await get_clipboard_text(), isSecret);
+                showButtonPatch.enable();
+            }
+            else {
+                // Hide the button, if it's visible:
+                showButtonPatch.disable();
+            }
+        });
+    }
+    _triggerPaste() {
+        const time = Clutter.get_current_event_time();
+        if (Main.inputMethod.contentPurpose === Clutter.InputContentPurpose.TERMINAL) {
+            // Emit `Ctrl + Shift + v`
+            this._virtualKeyboard.notify_keyval(time, Clutter.KEY_Control_L, Clutter.KeyState.PRESSED);
+            this._virtualKeyboard.notify_keyval(time, Clutter.KEY_Shift_L, Clutter.KeyState.PRESSED);
+            this._virtualKeyboard.notify_keyval(time, Clutter.KEY_v, Clutter.KeyState.PRESSED);
+            this._virtualKeyboard.notify_keyval(time, Clutter.KEY_v, Clutter.KeyState.RELEASED);
+            this._virtualKeyboard.notify_keyval(time, Clutter.KEY_Shift_L, Clutter.KeyState.RELEASED);
+            this._virtualKeyboard.notify_keyval(time, Clutter.KEY_Control_L, Clutter.KeyState.RELEASED);
+        }
+        else {
+            // Emit `Ctrl + v`
+            this._virtualKeyboard.notify_keyval(time, Clutter.KEY_Control_L, Clutter.KeyState.PRESSED);
+            this._virtualKeyboard.notify_keyval(time, Clutter.KEY_v, Clutter.KeyState.PRESSED);
+            this._virtualKeyboard.notify_keyval(time, Clutter.KEY_v, Clutter.KeyState.RELEASED);
+            this._virtualKeyboard.notify_keyval(time, Clutter.KEY_Control_L, Clutter.KeyState.RELEASED);
+        }
+    }
+    _createButtonDisplayText(text, isSecret) {
+        if (isSecret) {
+            return "•".repeat(clamp(text.length, 5, 15));
+        }
+        else {
+            // Replace everything after first line break by ellipsis:
+            return text.replace(/\n.*$/s, "…");
+        }
+    }
+}
+/** A promisified wrapper around `St.Clipboard.get_default().get_text()`  */
+async function get_clipboard_text() {
+    return new Promise((resolve) => {
+        St.Clipboard.get_default().get_text(St.ClipboardType.CLIPBOARD, (clipboard, text) => {
+            resolve(text);
+        });
+    });
+}
+
+export { OSKQuickPasteAction };

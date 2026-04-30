@@ -1,418 +1,77 @@
-# Mobuntu
-**Document Version 6.0 — RC16 "The Switch Update"** | RC15.1 LTS "The Firmware Fix"
+# Mobuntu Recipes
 
-> Co-developed with Claude (Anthropic) and arkadin91 (reference image, firmware discovery, OTA script logic, cmdline tuning). Build scripts are intentionally readable and modular for long-term maintainability.
+Multi-device Ubuntu ARM64 image builder for SDM845 phones.
+Built on top of [arkadin91/mobuntu-recipes](https://github.com/arkadin91/mobuntu-recipes),
+with multi-device scaffolding and Mobuntu Orange customizations.
 
----
-# As of RC15, we have transitioned to a Rolling Release, Packages may break, Your phone may crash, refer to the Archives for specific versions if you need stability
-Mobuntu is a toolkit that builds a full Ubuntu ARM64 image for SDM845-based phones and Nintendo Switch devices. The end goal is to support the full range of devices Mobian targets, running a real Ubuntu release with a touch-first mobile interface.
+## Requirements
 
-No postmarketOS. No pmbootstrap. Everything is built via a debos recipe pipeline inside a debootstrap rootfs, then sealed and flashed via fastboot or Hekate.
+- Ubuntu 24.04 host (build host — do NOT use 26.04, QEMU arm64 chroot regression)
+- `debos` installed
+- Network access during build (firmware + kernel fetched at build time)
 
-**Mobuntu is a rolling release.** The `Mobuntu/` folder in this repository is the live build environment — scripts, recipes, device configs, and overlays are updated in place. There is no separate "stable" branch. RC15.1 LTS is the current designated stable tag for SDM845-only builds; RC16 is the current development head. Pull the latest `Mobuntu/` folder contents to get all fixes and new device support.
+## Usage
 
-**Build color codes (introduced RC13):**
+```sh
+# Build for Xiaomi Poco F1 (beryllium) — confirmed working baseline
+./build.sh -d beryllium
 
-| Color | Release | Notes |
-| :--- | :--- | :--- |
-| 🟠 Orange | Ubuntu 24.04 (noble) | Legacy — supported for Switch builds (l4t-debs noble only) |
-| 🩷 Pink | Ubuntu 26.04 (resolute) | **Recommended** for SDM845 (Poco F1, OnePlus 6/6T) |
-| 🟡 Yellow | Ubuntu EDGE / DEVEL | Always yellow — experimental |
+# Build for OnePlus 6T (fajita)
+./build.sh -d fajita
 
-> **RC16 release notes:** Nintendo Switch support wired in via theofficialgman's `l4t-debs` apt repository. fastrpc daemons and DSP binaries integrated into the SDM845 build pipeline. Multiple firmware staging bugs fixed. See CHANGELOG.md for full details.
->
-> **RC15.1 LTS** is the stable SDM845-only base. Recommended for Poco F1 builds if RC16 Switch work is not needed.
+# Skip rootfs stage, reuse existing tarball
+./build.sh -d beryllium -i
 
----
+# Override suite (e.g. force plucky on fajita)
+./build.sh -d fajita -s plucky
 
-## Supported Devices
-
-| Device | Codename | Firmware Method | Status |
-| :--- | :--- | :--- | :--- |
-| Xiaomi Poco F1 (Tianma) | beryllium | Local archive → git repo → OnePlus fallback | ✅ Building — awaiting flash test |
-| Xiaomi Poco F1 (EBBG) | beryllium | Local archive → git repo → OnePlus fallback | ✅ Building — awaiting flash test |
-| OnePlus 6 | enchilada | linux-firmware (apt) | 🧪 Untested |
-| OnePlus 6T | fajita | linux-firmware (apt) | 🧪 Untested |
-| Nintendo Switch V1 (Erista) | icosa | l4t-debs (noble) | 🧪 RC16 — pipeline ready, boot unconfirmed |
-| Nintendo Switch V2 (Mariko) | hoag | l4t-debs (noble) | 🧪 RC16 — pipeline ready, boot unconfirmed |
-| Nintendo Switch Lite | vali | l4t-debs (noble) | 🧪 RC16 — pipeline ready, boot unconfirmed |
-| Nintendo Switch OLED | aula | l4t-debs (noble) | 🧪 RC16 — pipeline ready, boot unconfirmed |
-
-Adding a new device requires only a `devices/<brand>-<codename>.conf` and a matching `recipes/devices/<codename>.yaml` — no script changes needed.
-
----
-
-## Hardware Status (Beryllium, RC16)
-
-| Feature | Status | Notes |
-| :--- | :--- | :--- |
-| CPU | ✅ Working | Full performance, all cores |
-| GPU / Display | ✅ Working | Freedreno hardware acceleration |
-| Touch | ✅ Confirmed | Tested on device |
-| Wi-Fi | ✅ Confirmed | ath10k, tested on device |
-| Bluetooth | ✅ Confirmed | Tested on device |
-| Audio | ✅ Confirmed | PipeWire + UCM2 maps, speaker and headphones |
-| Cellular / LTE | ❌ Disabled | Crashes WiFi and BT when active — under investigation |
-| Sensors | ⚠️ Cosmetic crash | SLPI crash loop every 40s — sensors non-functional, all other hardware unaffected. fastrpc stack staged, CHRE integration pending. |
-| Camera | ❌ Not working | Out of scope for now |
-| NFC | ❌ No hardware | Not present on Poco F1 |
-
----
-
-## Architecture
-
-### The Build Pipeline
-
-```
-1_preflight.sh       — host deps, device/UI/release picker, build.env, generates run_build.sh
-run_build.sh         — generated — calls debos for base tarball (cached) then device tarball
-5_seal_rootfs.sh     — unpacks device tarball, UUID, cmdline, fstab, boot.img or L4T files
-verify_build.sh      — unpacks and inspects device tarball before sealing
-4_enter_chroot.sh    — debug utility, drops you into the rootfs interactively
-watchdog.sh          — unattended runner, wraps run_build.sh
+# List available devices
+./build.sh -h
 ```
 
-### Project Layout
-
-```
-mobuntu/
-├── 1_preflight.sh          # Host deps, device/UI/release picker, generates run_build.sh
-├── run_build.sh            # Generated by preflight — debos invocation with all -t flags
-├── 5_seal_rootfs.sh        # Unpacks tarball, UUID, cmdline, fstab, boot images
-├── verify_build.sh         # Post-build integrity checks (unpacks tarball to temp dir)
-├── 4_enter_chroot.sh       # Debug utility — interactive chroot shell
-├── watchdog.sh             # Unattended build runner
-├── mobuntu-developer-masterkit.py  # Curses TUI developer tool
-│
-├── build.env               # Generated by preflight — read by all other scripts
-│
-├── devices/                # Device config profiles (source of truth)
-│   ├── xiaomi-beryllium-tianma.conf
-│   ├── xiaomi-beryllium-ebbg.conf
-│   ├── oneplus-enchilada.conf
-│   ├── oneplus-fajita.conf
-│   ├── nvidia-switch-v1.conf
-│   ├── nvidia-switch-v2.conf
-│   ├── nvidia-switch-lite.conf
-│   └── nvidia-switch-oled.conf
-│
-├── recipes/                # debos recipe pipeline
-│   ├── base.yaml           # debootstrap + apt + UI + user → base-{release}.tar.gz
-│   ├── qcom.yaml           # Qualcomm services, firmware, fastrpc hooks (SDM845 recipes)
-│   ├── l4t.yaml            # L4T BSP packages + theofficialgman repo (Switch recipes)
-│   ├── devices/            # Per-device recipes
-│   │   ├── beryllium.yaml
-│   │   ├── enchilada.yaml
-│   │   ├── fajita.yaml
-│   │   ├── switch-v1.yaml
-│   │   ├── switch-v2.yaml
-│   │   ├── switch-lite.yaml
-│   │   └── switch-oled.yaml
-│   ├── scripts/            # Shell scripts called by recipe run: actions
-│   │   ├── stage-firmware-git.sh       # Firmware staging (host-side, ARTIFACTDIR-aware)
-│   │   └── install-fastrpc-device.sh   # fastrpc daemons + DSP binaries (host-side)
-│   └── overlays/           # Files copied verbatim into rootfs by overlay: action
-│       ├── qcom/           # SDM845: 51-qcom.conf, qcom-firmware initramfs hook
-│       ├── enchilada/      # OnePlus: 51-qcom.conf without period-size tuning
-│       └── beryllium-hooks/ # OTA hooks: zz-qcom-bootimg, bootimg initrd hook
-│
-├── firmware/               # Per-device firmware archives (not committed — user-provided)
-│   └── xiaomi-beryllium/
-│       ├── firmware.tar.gz # Main blobs (pre-clone from sdm845-mainline git repo)
-│       └── dsp.tar.gz      # DSP-side binaries from MIUI 12 dsp.img (adsp/cdsp/sdsp)
-│
-└── packages/               # Pre-built .deb packages (not committed — user-provided)
-    └── fastrpc/
-        ├── fastrpc-support_1.0.0-1_arm64.deb
-        ├── libfastrpc1_1.0.0-1_arm64.deb
-        └── libfastrpc-dev_1.0.0-1_arm64.deb
-```
-
-### Device Config System
-
-Every device-specific setting lives in `devices/<brand>-<codename>.conf`. Script 1 presents a menu of available configs. Everything flows into `build.env` and `run_build.sh`. Key fields:
-
-- `DEVICE_QUIRKS` — space-separated flags controlling build behaviour:
-  - `dtb_append` — cat kernel + DTB before mkbootimg (required for SDM845)
-  - `qcom_services` — install and enable Qualcomm userspace daemons
-  - `firmware_source_local` — use local firmware bundle
-  - `firmware_source_online` — pull firmware from apt
-  - `l4t_bootfiles` — output kernel.lz4 + initrd.lz4 + DTB (Switch)
-- `DEVICE_UBUNTU_OVERRIDE` — forces a specific Ubuntu release for the device, overriding the user's `UBUNTU_RELEASE` selection. Switch devices set `"noble"` because theofficialgman's `l4t-debs` does not yet support `resolute` (26.04).
-- Kernel method and repo
-- Boot method (`mkbootimg` / `l4t` / `uboot` / `uefi`) and all parameters
-- Firmware method (`git` / `apt`) and repo URL
-- DTB filename, mkbootimg offsets
-- Device-specific apt packages and systemd services
-- Hostname and image label
-
-### debos Recipe Pipeline
-
-`1_preflight.sh` generates `run_build.sh` which calls debos twice:
-
-1. **Base build** (runs once, result cached as `base-{release}.tar.gz`):
-   `base.yaml` → debootstrap → apt (base packages) → UI → user → pack
-
-2. **Device build** (per device, starts from unpacked base):
-   `devices/{codename}.yaml` → unpack base → qcom.yaml or l4t.yaml → kernel → hostname → pack → `{label}-{release}.tar.gz`
-
-`5_seal_rootfs.sh` unpacks the device tarball, writes UUID/cmdline/fstab, builds boot.img or L4T files, and creates the final rootfs image.
-
-The base tarball is only rebuilt if `base.yaml` is newer than the existing tarball. Multi-device builds reuse the base — 40-60% faster than the RC14 bash pipeline.
-
-### fakemachine Backend
-
-debos runs inside a VM for reproducibility. Backend is auto-detected:
-
-| Backend | Speed | Requirement |
-| :--- | :--- | :--- |
-| kvm | ~9 min | `/dev/kvm` accessible |
-| uml | ~18 min | `user-mode-linux` package |
-| qemu | ~2.5 hr | `qemu-system-aarch64` (always available) |
-| none | fastest | Root required, WSL2-safe |
-
-WSL2 users: select `none` when preflight asks for backend override.
-
-### UI Picker
-
-| Option | UI | Display Manager | Notes |
-| :--- | :--- | :--- | :--- |
-| 1 | Phosh | greetd | Recommended for phones |
-| 2 | Ubuntu Desktop Minimal | GDM3 | Touch-friendly GNOME |
-| 3 | Unity | LightDM | |
-| 4 | Plasma Desktop | SDDM | Better for tablets |
-| 5 | Plasma Mobile | SDDM | Touch-first KDE |
-| 6 | Lomiri | greetd | Ubuntu Touch shell — experimental |
-
-### Firmware Strategy
-
-**SDM845 devices (beryllium, enchilada, fajita):**
-
-1. **Local archive** — `firmware/<brand>-<codename>/firmware.tar.gz` — applied automatically as base layer if present (non-interactive)
-2. **Git clone** — `FIRMWARE_REPO` cloned and overlaid on top of local bundle
-3. **Git-fail fallback** — local bundle used alone if clone fails
-4. **Local bundle re-applied** — wins over git overlay at the end
-5. **OnePlus 6 apt fallback** — last resort, with warning. GPU/WiFi/BT work; modem not guaranteed.
-
-> **Note:** `stage-firmware-git.sh` uses `$ARTIFACTDIR` (set by debos to the repo root) to locate the local bundle — not `BASH_SOURCE[0]`, which would resolve to debos's temp script copy location.
-
-**OnePlus 6 / 6T:** All blobs ship in `linux-firmware` apt package — no local bundle needed.
-
-**Switch:** Firmware from `l4t-debs` BSP packages (`nvidia-l4t-firmware`, `nvidia-l4t-xusb-firmware`).
-
-**Adreno 630 GPU firmware** (`a630_sqe.fw`, `a630_gmu.bin`) always fetched from kernel.org.
-
-### fastrpc / DSP Stack (SDM845, RC16)
-
-SDM845 builds now include the Qualcomm FastRPC userspace stack:
-
-- **AP-side daemons** — `fastrpc-support` (`adsprpcd`, `cdsprpcd`) installed from `packages/fastrpc/*.deb`; cross-compiled from source via `build-fastrpc-arm64.sh`
-- **Runtime libraries** — `libfastrpc1` (`libadsprpc.so`, `libcdsprpc.so`, `libsdsprpc.so`)
-- **DSP-side binaries** — `firmware/xiaomi-beryllium/dsp.tar.gz` extracted from MIUI 12 V12.0.3 `dsp.img`; staged to `usr/share/qcom/sdm845/Xiaomi/beryllium/{adsp,cdsp,sdsp}/`
-
-See `Package Info.MD` and `How to Build.MD` for details on building and staging these packages.
-
-### Audio
-
-Audio works via PipeWire + ALSA UCM2 maps. `alsa-ucm-conf` is installed before the Mobian repo is added to prevent version conflicts. `alsa-state` and `alsa-restore` are masked — they conflict with the SDM845 audio subsystem.
-
-**OnePlus 6/6T note:** `api.alsa.period-*` values are omitted from their WirePlumber config — auto-selection works better on enchilada/fajita (per upstream qcom-phone-utils 0.4.1 fix).
-
-### Boot Cmdline (SDM845, arkadin91)
-
-```
-root=UUID=${BUILD_UUID} earlycon console=tty0 console=ttyMSM0,115200 init=/sbin/init ro loglevel=7
-```
-
-Written to `/etc/kernel/cmdline` by `5_seal_rootfs.sh`. The active DTB is stored in `/etc/kernel/boot_dtb`.
-
-### OTA Boot Updates
-
-`apt upgrade` automatically rebuilds `boot.img` after every kernel update via:
-
-- `/etc/kernel/postinst.d/zz-qcom-bootimg` — fires after `apt install linux-image-*`
-- `/etc/initramfs/post-update.d/bootimg` — fires after `update-initramfs`
-
-`qbootctl` is installed for slot updates without a PC.
-
----
-
-## Supported Ubuntu Releases
-
-| Release | Codename | Status |
-| :--- | :--- | :--- |
-| 24.04 LTS | noble | ✅ Switch only (l4t-debs noble support) |
-| 24.10 | oracular | ⚠️ Supported, End of Life |
-| 26.04 LTS | resolute | ✅ **Recommended** for SDM845 devices |
-
-> Ubuntu 26.04 resolute debootstrap requires a symlink: `sudo ln -sf /usr/share/debootstrap/scripts/gutsy /usr/share/debootstrap/scripts/resolute`. `1_preflight.sh` creates this automatically.
-
----
-
-## Build Workflow
-
-### Prerequisites
-
-- Ubuntu/Debian x86-64 or ARM64 host (native or WSL2)
-- ~20GB free disk space
-- Internet access
-- WSL2 users: select `none` for fakemachine backend when preflight asks
-
-### Quick Start
-
-```bash
-# Make scripts executable
-find . -name "*.sh" -exec chmod +x {} +
-
-# Run preflight — installs host deps, picks device/UI/release, generates run_build.sh
-sudo bash 1_preflight.sh
-
-# Build (generated by preflight)
-sudo bash run_build.sh
-
-# Verify before sealing (recommended)
-bash verify_build.sh
-
-# Seal and generate flash images
-sudo bash 5_seal_rootfs.sh
-
-# Optional: drop into the rootfs for debugging
-sudo bash 4_enter_chroot.sh
-```
-
-### Pre-Build: Firmware and Packages
-
-For SDM845 builds, stage firmware and fastrpc before running `run_build.sh`:
-
-```bash
-# Clone firmware (or drop in a pre-made bundle)
-git clone --depth=1 https://gitlab.com/sdm845-mainline/firmware-xiaomi-beryllium /tmp/fw
-mkdir -p /tmp/fw-stage && cp -r /tmp/fw/lib /tmp/fw/usr /tmp/fw-stage/
-mkdir -p firmware/xiaomi-beryllium
-tar -czf firmware/xiaomi-beryllium/firmware.tar.gz -C /tmp/fw-stage .
-
-# Build fastrpc .debs (requires fastrpc-1_0_0_tar.gz + pkg-fastrpc-debian-latest_tar.gz)
-chmod +x build-fastrpc-arm64.sh && ./build-fastrpc-arm64.sh
-mkdir -p packages/fastrpc && cp output/*.deb packages/fastrpc/
-```
-
-### Flashing (SDM845)
-
-Boot into fastboot mode (Power + Volume Down), then:
-
-```bash
-fastboot flash boot   mobuntu-beryllium_resolute_boot.img
-fastboot flash system mobuntu-beryllium_resolute_root_sparse.img
-fastboot reboot
-```
-
-### Flashing (Switch)
-
-Copy boot files to the FAT32 partition of your SD card, then flash rootfs via Hekate:
-
-```bash
-# SD card FAT32:
-switchroot/ubuntu/kernel.lz4
-switchroot/ubuntu/initrd.lz4
-switchroot/ubuntu/<dtb>.dtb
-
-# Rootfs via Hekate → Tools → Flash Linux, or:
-dd if=mobuntu-icosa-noble_root.img of=/dev/<linux-partition> bs=4M status=progress
-```
-
----
+## Device Support
+
+| Codename   | Device         | Suite    | Status              |
+|------------|----------------|----------|---------------------|
+| beryllium  | Xiaomi Poco F1 | plucky   | ✅ Confirmed working |
+| fajita     | OnePlus 6T     | resolute | ⚠️  Suite warning   |
 
 ## Adding a New Device
 
-1. Create `devices/<brand>-<codename>.conf` using an existing config as a template
-2. Create `recipes/devices/<codename>.yaml` using an existing device recipe as a template
-3. Set `DEVICE_QUIRKS`, `FIRMWARE_METHOD`, `FIRMWARE_REPO`, `BOOT_DTB`, mkbootimg params, etc.
-4. Optionally place `firmware.tar.gz` in `firmware/<brand>-<codename>/`
-5. Run `1_preflight.sh` — your device appears in the menu automatically
+1. Create `devices/<codename>/device.conf` — see existing configs for schema
+2. Create `devices/<codename>/overlays/` — add any device-specific udev rules,
+   systemd units, or config files that should overlay on top of common overlays
+3. Run `./build.sh -d <codename>`
 
----
+## Suite Notes
 
-## Troubleshooting
+- **plucky (25.04)** — recommended for all SDM845 devices
+- **resolute (26.04)** — known regressions: WiFi, Bluetooth, audio on SDM845;
+  build.sh requires double confirmation before proceeding
 
-**WSL2 / debos fakemachine errors:**
-Select `none` when preflight asks for backend override. Requires sudo but works correctly in WSL2.
+## Structure
 
-**`stat .../overlays/qcom: no such file or directory`:**
-The `overlays/qcom/` directory is missing. Extract the contents from the release archive or see MOBUNTU-DOCS.md for the required file list.
-
-**Firmware not staging (falls through to OnePlus fallback):**
-Confirm `firmware/xiaomi-beryllium/firmware.tar.gz` exists at the repo root. The path is resolved via `$ARTIFACTDIR` — run `sudo bash run_build.sh` from within the repo directory, not from `~`.
-
-**Emergency mode on boot:**
-Run `systemctl --failed` and `cat /etc/fstab`. If `/boot/efi` appears with a fake UUID, remove it: `sudo sed -i '/boot\/efi/d' /etc/fstab`.
-
-**`qcom_scm -22` error in dmesg:**
-Cosmetic — SLPI sensor hub crash loop every ~40s. Does not affect display, audio, WiFi or BT. See Known Issues. Do not install `hexagonrpcd` or `qcom-support-common`.
-
-**No WiFi interface:**
-Check `systemctl status tqftpserv rmtfs`. Confirm firmware blobs at `/lib/firmware/qcom/sdm845/beryllium/`.
-
-**No audio / dummy output:**
-Confirm UCM2 maps at `/usr/share/alsa/ucm2/Xiaomi/beryllium/`. Rebuild with a firmware archive that includes UCM maps.
-
-**Modem crashes WiFi and BT:**
-Known issue. Do not start ofono or ModemManager on beryllium.
-
-**Black screen on boot:**
-DTB mismatch. Confirm panel variant (Tianma vs EBBG) and correct device config. Check from TWRP: `cat /sys/class/graphics/fb0/modes`.
-
-**Kernel hook not firing after apt upgrade:**
-Check `/etc/kernel/postinst.d/zz-qcom-bootimg` is executable and `/etc/kernel/cmdline` exists with a valid UUID.
-
-**Base tarball rebuilding every run:**
-`base.yaml` is newer than `base-{release}.tar.gz`. Touch the tarball or let it rebuild — the stale check is mtime-based.
-
-**`dpkg -i` errors for fastrpc packages:**
-Use `--force-depends` — the cross-built packages have empty `Depends:` for libc6. See `Package Info.MD`.
-
----
-
-## Known Issues
-
-### SLPI crash loop (cosmetic)
-- **Symptom:** `remoteproc2` crashes every ~40s, `-22` SCM error in dmesg
-- **Cause:** SLPI sensor hub requires fastrpc DSP-side binaries and a CHRE daemon. DSP binaries are staged (RC16) but CHRE integration is pending.
-- **Impact:** Sensors non-functional. Everything else unaffected.
-- **Do not install** `hexagonrpcd` or `qcom-support-common`.
-
-### Modem crashes WiFi and BT
-- Under investigation. Do not enable ModemManager or ofono on beryllium.
-
-### Switch l4t-debs package names unverified
-- RC16 wires in theofficialgman's `l4t-debs` repo but the `nvidia-l4t-*` package names in `l4t.yaml` have not been verified against the live packages index.
-- Before building for Switch: `curl https://theofficialgman.github.io/l4t-debs/dists/noble/main/binary-arm64/Packages | grep "^Package:"`
-
-### Switch ubuntu release locked to noble
-- theofficialgman's `l4t-debs` does not yet support resolute (26.04). Switch builds use `DEVICE_UBUNTU_OVERRIDE="noble"` and produce `base-noble.tar.gz` / `mobuntu-icosa-noble.tar.gz` regardless of the user's release selection.
-
-### qcom-support-common regression (Mobian upstream)
-- Affects Mobian weekly builds post-March 2026. Mobuntu is not affected — `qcom-support-common` and `sdm845-support` are never installed.
-
----
-
-## Planned (RC17 and beyond)
-
-- First confirmed boot on beryllium hardware — flash test
-- OnePlus 6/6T first build attempt
-- Switch boot confirmation — verify `nvidia-l4t-*` package names, test Hekate flash
-- SLPI sensor fix — CHRE daemon integration, sdsprpcd enablement
-- Modem/WiFi-BT crash investigation
-- Chroot Edition — Mobuntu base tarball running via chroot-distro on rooted Android (any SoC, any device)
-- resolute (26.04) support for Switch — pending theofficialgman upstream
-
----
-
-## Community & Support
-
-Discord: **PastorCatto's The ISLAND** — [https://discord.gg/RZV2HveyBg](https://discord.gg/RZV2HveyBg)
-
-Special thanks to the Mobian and postmarketOS teams for SDM845 mainline kernel work, the sdm845-mainline group for the firmware repository, theofficialgman for the l4t-debs repository and Switch Ubuntu support, arkadin91 for the reference image, firmware discoveries, and cmdline tuning that made this possible.
-
----
-
-*Mobuntu — Ubuntu on everything.*
+```
+build.sh                    # Entry point — loads device.conf, calls debos
+rootfs.yaml                 # Stage 1: debootstrap + base packages
+image.yaml                  # Stage 2: image creation, overlays, firmware, final config
+packages/
+  packages-base.yaml        # Base package list (hexagonrpcd, qcom utils, pipewire, etc.)
+  packages-ubuntu-desktop.yaml
+overlays/                   # Common overlays applied to all devices
+  etc/systemd/system/
+    hexagonrpcd.service.d/
+      mobuntu-ordering.conf # Ensures After=multi-user.target
+scripts/
+  setup-user.sh             # User creation (upstream verbatim)
+  update-apt.sh             # apt update + full-upgrade (upstream verbatim)
+  fetch-firmware.sh         # Device-aware firmware + kernel download/install
+  final.sh                  # Post-image config: alsa, extensions, grow-rootfs
+devices/
+  beryllium/
+    device.conf             # Firmware URLs, kernel version, suite
+    overlays/               # beryllium-specific udev rules
+  fajita/
+    device.conf             # Upstream hardcoded values, migrated here
+    overlays/
+```

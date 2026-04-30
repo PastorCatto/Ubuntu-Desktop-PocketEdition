@@ -1,0 +1,13 @@
+{{- $architecture := or .architecture "arm64" -}}
+
+architecture: {{ $architecture }}
+
+actions:
+  - action: apt
+    recommends: true
+    description: Install ubuntu-desktop packages
+    packages:
+      - ubuntu-desktop
+      - gnome-software-plugin-deb
+      - gnome-software-plugin-snap
+      - gdm3

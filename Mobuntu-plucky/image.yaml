@@ -1,0 +1,77 @@
+{{- $image          := or .image          "mobuntu-sdm845.img"     -}}
+{{- $rootfs         := or .rootfs         "mobuntu-rootfs.tar.gz"  -}}
+{{- $device         := or .device         "beryllium"              -}}
+{{- $fw_archive     := or .fw_archive     ""                       -}}
+{{- $kernel_image   := or .kernel_image   ""                       -}}
+{{- $kernel_headers := or .kernel_headers ""                       -}}
+{{- $kernel_version := or .kernel_version "unknown"               -}}
+
+architecture: arm64
+
+actions:
+  - action: unpack
+    description: Unpack root filesystem
+    compression: gz
+    file: {{ $rootfs }}
+
+  - action: overlay
+    description: Apply common overlays
+    source: overlays
+    destination: /
+
+  - action: overlay
+    description: Apply device-specific overlays ({{ $device }})
+    source: devices/{{ $device }}/overlays
+    destination: /
+
+  - action: recipe
+    recipe: packages/packages-ubuntu-desktop.yaml
+
+  - action: image-partition
+    description: Creating image
+    imagename: {{ $image }}
+    imagesize: 10GB
+    partitiontype: gpt
+    mountpoints:
+      - mountpoint: /
+        partition: mobuntu
+    partitions:
+      - name: mobuntu
+        fs: ext4
+        start: 0M
+        end: 100%
+
+  - action: filesystem-deploy
+    description: Deploying filesystem into image
+
+  - action: run
+    chroot: true
+    script: scripts/update-apt.sh
+
+  - action: run
+    chroot: true
+    description: Fetch and install device firmware + kernel ({{ $device }})
+    script: scripts/fetch-firmware.sh
+    environment:
+      DEVICE: "{{ $device }}"
+      FW_ARCHIVE_URL: "{{ $fw_archive }}"
+      KERNEL_IMAGE_URL: "{{ $kernel_image }}"
+      KERNEL_HEADERS_URL: "{{ $kernel_headers }}"
+      KERNEL_VERSION: "{{ $kernel_version }}"
+
+  - action: overlay
+    description: Copy GNOME extensions and user files
+    source: files
+    destination: /opt/
+
+  - action: run
+    chroot: true
+    description: Final system configuration
+    script: scripts/final.sh
+    environment:
+      DEVICE: "{{ $device }}"
+
+  - action: run
+    description: Extract and compact rootfs partition from image
+    postprocess: true
+    command: dd if={{ $image }} skip=17408 of=root-{{ $image }} iflag=skip_bytes,count_bytes && e2fsck -fy root-{{ $image }} && resize2fs -f -M root-{{ $image }}

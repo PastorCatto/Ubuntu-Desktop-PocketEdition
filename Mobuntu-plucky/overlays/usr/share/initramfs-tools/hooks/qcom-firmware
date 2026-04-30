@@ -1,0 +1,20 @@
+#!/bin/sh
+set -e
+
+PREREQS=""
+case $1 in
+    prereqs) echo "${PREREQS}"; exit 0;;
+esac
+
+. /usr/share/initramfs-tools/hook-functions
+
+FW_LIST="qcom/sdm845/Xiaomi/beryllium/a630_zap.mbn \
+         qcom/sdm845/Xiaomi/beryllium/adsp.mbn \
+         qcom/sdm845/Xiaomi/beryllium/cdsp.mbn \
+         qcom/sdm845/Xiaomi/beryllium/ipa_fws.mbn \
+         qcom/sdm845/Xiaomi/beryllium/slpi.mbn \
+         qcom/a630_sqe.fw \
+         qcom/a630_gmu.bin"
+
+add_firmware ${FW_LIST}
+
