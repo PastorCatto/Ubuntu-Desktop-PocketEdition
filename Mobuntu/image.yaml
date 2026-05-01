@@ -44,20 +44,19 @@ actions:
   - action: filesystem-deploy
     description: Deploying filesystem into image
 
+  - action: overlay
+    description: Install build scripts into rootfs
+    source: scripts
+    destination: /usr/local/sbin/
+
   - action: run
     chroot: true
-    script: scripts/update-apt.sh
+    command: bash /usr/local/sbin/update-apt.sh
 
   - action: run
     chroot: true
     description: Fetch and install device firmware + kernel ({{ $device }})
-    script: scripts/fetch-firmware.sh
-    environment:
-      DEVICE: "{{ $device }}"
-      FW_ARCHIVE_URL: "{{ $fw_archive }}"
-      KERNEL_IMAGE_URL: "{{ $kernel_image }}"
-      KERNEL_HEADERS_URL: "{{ $kernel_headers }}"
-      KERNEL_VERSION: "{{ $kernel_version }}"
+    command: DEVICE="{{ $device }}" FW_ARCHIVE_URL="{{ $fw_archive }}" KERNEL_IMAGE_URL="{{ $kernel_image }}" KERNEL_HEADERS_URL="{{ $kernel_headers }}" KERNEL_VERSION="{{ $kernel_version }}" bash /usr/local/sbin/fetch-firmware.sh
 
   - action: overlay
     description: Copy GNOME extensions and user files
@@ -67,9 +66,7 @@ actions:
   - action: run
     chroot: true
     description: Final system configuration
-    script: scripts/final.sh
-    environment:
-      DEVICE: "{{ $device }}"
+    command: DEVICE="{{ $device }}" bash /usr/local/sbin/final.sh
 
   - action: run
     description: Extract and compact rootfs partition from image
