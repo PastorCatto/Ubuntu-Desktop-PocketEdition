@@ -53,13 +53,8 @@ actions:
     chroot: true
     command: bash /usr/local/sbin/update-apt.sh
 
-  - action: run
-    chroot: true
-    description: Fetch and install device firmware + kernel ({{ $device }})
-    command: DEVICE="{{ $device }}" FW_ARCHIVE_URL="{{ $fw_archive }}" KERNEL_IMAGE_URL="{{ $kernel_image }}" KERNEL_HEADERS_URL="{{ $kernel_headers }}" KERNEL_VERSION="{{ $kernel_version }}" bash /usr/local/sbin/fetch-firmware.sh
-
   - action: overlay
-    description: Copy GNOME extensions and user files
+    description: Copy GNOME extensions, user files and firmware debs
     source: files
     destination: /opt/
 
