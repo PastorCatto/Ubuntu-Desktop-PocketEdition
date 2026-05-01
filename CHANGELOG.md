@@ -51,4 +51,4 @@ debos silently ignores environment blocks on script actions. Fixed by overlaying
 - **Kernel:** linux-image-6.18-sdm845 via Mobian apt repo
 - **Firmware:** bundled debs in files/ installed via /opt/*.deb
 - **Audio fix:** Mobian alsa-ucm-conf + mask alsa-state, alsa-restore
-- **Suite:** upstream defaults to resolute — Mobuntu Orange defaults to plucky for SDM845 stability
+- **Suite:** upstream defaults to resolute — Mobuntu defaults to plucky for SDM845 stability
