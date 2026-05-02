@@ -3,11 +3,6 @@
 
 set -ex
 
-# ── Network: fix resolv.conf before any wget ──────────────────────────────────
-echo "Fix resolv.conf"
-rm -rf /etc/resolv.conf
-echo "nameserver 1.1.1.1" > /etc/resolv.conf
-
 # ── Firmware: install from local debs in /opt/ ────────────────────────────────
 echo "Install firmware"
 dpkg -i --force-overwrite /opt/linux-firmware-*.deb
@@ -25,11 +20,10 @@ else
 fi
 
 # ── Audio: Mobian UCM2 maps ───────────────────────────────────────────────────
+# Mobian repo is configured via overlays/etc/apt/sources.list.d/extrepo_mobian.sources
 echo "Fix alsa-ucm-conf"
-wget -q https://repo.mobian.org/pool/main/a/alsa-ucm-conf/alsa-ucm-conf_1.2.15.3-1mobian3_all.deb
-dpkg -i --force-overwrite alsa-ucm-conf_1.2.15.3-1mobian3_all.deb
+apt-get install -y --allow-downgrades alsa-ucm-conf
 apt-mark hold alsa-ucm-conf
-rm -f alsa-ucm-conf_*.deb
 
 echo "Mask for working speakers"
 systemctl mask alsa-state alsa-restore

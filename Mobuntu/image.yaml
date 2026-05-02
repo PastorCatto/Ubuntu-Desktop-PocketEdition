@@ -51,6 +51,11 @@ actions:
 
   - action: run
     chroot: true
+    description: Fix resolv.conf for chroot network access
+    command: rm -rf /etc/resolv.conf && echo "nameserver 1.1.1.1" > /etc/resolv.conf
+
+  - action: run
+    chroot: true
     command: bash /usr/local/sbin/update-apt.sh
 
   - action: overlay
